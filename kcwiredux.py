@@ -30,6 +30,10 @@ from scipy import ndimage
 from astropy.modeling import models, fitting
 from k_lambda import k_lambda
 
+# Wavelength dictionary for standard lines (from NIST when possible)
+wvldict = {'Hbeta':4861.35, 'Hgamma':4340.472, 'Hdelta':4101.734, 'Hepsilon':3970.075,
+		'OII3727':3727.320, 'OII3729':3729.225, 'OII3727_doublet':3728., 'OIII4363':4363.209, 'OIII4959':4959., 'OIII5007':5006.8}
+
 class Cube:
 	"""
 	A class for each reduced IFU datacube.
@@ -689,9 +693,7 @@ class Cube:
 		else:
 			velmask = self.velmask
 
-		# Wavelength dictionary for standard lines (from NIST when possible)
-		wvldict = {'Hbeta':4861.35, 'Hgamma':4340.472, 'Hdelta':4101.734, 'Hepsilon':3970.075,
-				'OII3727':3727.320, 'OII3729':3729.225, 'OII3727_doublet':3728., 'OIII4363':4363.209, 'OIII4959':4959., 'OIII5007':5006.8}
+		# Get central line wavelength
 		line = wvldict[line_name]
 
 		# Mask out any bad pixels
@@ -751,8 +753,8 @@ class Cube:
 
 		return lineflux, width, snr
 
-	def metallicity(self, kinematics=True, verbose=False, overwrite=False):
-		""" Measure metallicities!
+	def reddening(self, kinematics=True, verbose=False, overwrite=False):
+		""" Compute and apply reddening correction to each spaxel.
 
 			Arguments:
 				kinematics (bool): if 'True', remove best-fit stellar template (must run stellarkinematics first)
@@ -772,16 +774,18 @@ class Cube:
 				data_norm = np.load('output/'+self.galaxyname+'/'+'data_norm.npy')
 				kinematics_wvl = np.load('output/'+self.galaxyname+'/'+'kinwvl.npy')
 
-			self.data_norm = data_norm
-
-
 		else:
-			self.data_norm = self.data_cropped
+			data_norm = self.data_cropped
 			kinematics_wvl = np.broadcast_to(self.wvl_cropped,self.data_cropped.T.shape).T
 
 		# Get Balmer line maps
-		resultHbeta = self.make_emline_map(self.data_norm, kinematics_wvl, 'Hbeta', overwrite=overwrite)
-		resultHgamma = self.make_emline_map(self.data_norm, kinematics_wvl, 'Hgamma', overwrite=overwrite)
+		resultHbeta = self.make_emline_map(data_norm, kinematics_wvl, 'Hbeta', overwrite=overwrite)
+		resultHgamma = self.make_emline_map(data_norm, kinematics_wvl, 'Hgamma', overwrite=overwrite)
+
+		# Compute relevant quantities
+		Hbeta = np.copy(resultHbeta[0])
+		Hgamma = np.copy(resultHgamma[0])
+		balmer = Hgamma/Hbeta
 
 		if verbose:
 
@@ -794,23 +798,16 @@ class Cube:
 
 			fig = plt.figure(figsize=(15,6))
 
-			Hbeta = np.copy(resultHbeta[0])
-			#Hbeta[np.where((resultHbeta[2] < 1.))] = np.nan
-			#Hbeta[Hbeta > 5] = np.nan
 			ax = fig.add_subplot(131,projection=self.wcs,slices=('x', 'y', 50))
 			ax.set_title(r'H$\beta$')
 			im=ax.imshow(Hbeta, vmin=0, vmax=1)
 			fig.colorbar(im, ax=ax)
 
-			Hgamma = np.copy(resultHgamma[0])
-			#Hgamma[np.where((resultHgamma[2] < 1.))] = np.nan
-			#Hgamma[Hgamma > 5] = np.nan
 			ax = fig.add_subplot(132,projection=self.wcs,slices=('x', 'y', 50))
 			ax.set_title(r'H$\gamma$')
 			im=ax.imshow(Hgamma, vmin=0, vmax=1)
 			fig.colorbar(im, ax=ax)
 
-			balmer = Hgamma/Hbeta
 			#balmer[np.isnan(balmer)] = 0.
 			ax = fig.add_subplot(133,projection=self.wcs,slices=('x', 'y', 50))
 			ax.set_title(r'$\mathrm{H}\gamma/\mathrm{H}\beta$')
@@ -826,12 +823,14 @@ class Cube:
 
 		# Compute E(B-V)
 		Ebv = np.log10(balmer/balmer0)/(-0.4*(k_lambda(wvldict['Hgamma'])-k_lambda(wvldict['Hbeta'])))
-		Ebv[Ebv>10.] = np.nan
-		plt.figure(figsize=(8,8))
-		plt.subplot(projection=wcs,slices=('x', 'y', 50))
-		plt.imshow(Ebv, cmap='viridis', interpolation='nearest')
-		plt.colorbar(label=r'$E(B-V)$')
-		plt.show()
+
+		if verbose:
+			plt.figure(figsize=(8,8))
+			plt.subplot(projection=self.wcs,slices=('x', 'y', 50))
+			plt.imshow(Ebv, cmap='viridis', interpolation='nearest', vmin=0, vmax=5)
+			plt.colorbar(label=r'$E(B-V)$')
+			plt.savefig('figures/EBVtest.png', bbox_inches='tight')
+			plt.show()
 
 		return
 
@@ -842,7 +841,7 @@ def main():
 	#c.binspaxels(verbose=True, targetsn=5., alpha=2.8)
 	#c.stellarkinematics(verbose=True, overwrite=True, snr_mask=1)
 	#c.plotkinematics(instdisp=True)
-	c.metallicity(verbose=True, overwrite=False)
+	c.reddening(verbose=False, overwrite=False)
 
 	return
 
