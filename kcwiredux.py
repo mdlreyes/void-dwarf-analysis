@@ -906,9 +906,9 @@ def main():
 
 	c = Cube('reines65', folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/data/', verbose=False, wcscorr=[174.17801 - 174.1787083, 26.727126 - 26.7263583], z=0.0331, Av=0.0675)
 	#c.testcovar(threshold=100, verbose=True)
-	c.binspaxels(verbose=False, targetsn=5., alpha=2.8)
-	#c.stellarkinematics(verbose=True, overwrite=True, snr_mask=1)
-	#c.plotkinematics(instdisp=True)
+	#c.binspaxels(verbose=False, targetsn=5., alpha=2.8)
+	#c.stellarkinematics(verbose=True, overwrite=False, snr_mask=1)
+	c.plotkinematics(instdisp=False)
 	c.reddening(verbose=True, overwrite=False)
 
 	return
