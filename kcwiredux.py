@@ -790,12 +790,12 @@ class Cube:
 
 		if verbose:
 
-			fig = plt.figure(figsize=(8,8))
-			ax = plt.subplot(projection=self.wcs,slices=('x', 'y', 50))
-			plt.imshow(resultHbeta[2], vmin=1)
-			plt.colorbar()
-			plt.savefig('figures/HbetaSNRtest.png', bbox_inches='tight')
-			plt.show()
+			#fig = plt.figure(figsize=(8,8))
+			#ax = plt.subplot(projection=self.wcs,slices=('x', 'y', 50))
+			#plt.imshow(resultHbeta[2], vmin=1)
+			#plt.colorbar()
+			#plt.savefig('figures/HbetaSNRtest.png', bbox_inches='tight')
+			#plt.show()
 
 			fig = plt.figure(figsize=(15,6))
 
@@ -827,7 +827,7 @@ class Cube:
 
 		if verbose:
 			plt.figure(figsize=(8,8))
-			plt.subplot(projection=self.wcs,slices=('x', 'y', 50))
+			#plt.subplot(projection=self.wcs,slices=('x', 'y', 50))
 			plt.imshow(Ebv, cmap='viridis', interpolation='nearest', vmin=0, vmax=5)
 			plt.colorbar(label=r'$E(B-V)$')
 			plt.savefig('figures/EBVtest.png', bbox_inches='tight')
@@ -836,20 +836,38 @@ class Cube:
 		print('Applying reddening correction to all spaxels...')
 
 		# Initialize output array
-		self.data_dered = np.zeros(np.shape(data_norm))
+		self.data_dered = np.copy(data_norm)
+
+		# Test how many spaxels have reasonable E(B-V) values
+		velmask = np.loadtxt('output/'+self.galaxyname+'/velmask.out')
+		print('Total spaxels in mask:', len(velmask[velmask>0]))
+		print('Spaxels with E(B-V)>0:', len(np.where((Ebv>0))[0]))
+		print('Spaxels with reasonable E(B-V):', len(np.where(np.logical_and(Ebv>0, Ebv<1))[0]))
 
 		# Loop over all spaxels
 		for i in range(len(data_norm[0,:,0])):
 			for j in range(len(data_norm[0,0,:])):
-				if Ebv[i,j] > 0. and np.isfinite(Ebv[i,j]):
+				if Ebv[i,j] > 0. and Ebv[i,j] < 1. and np.isfinite(Ebv[i,j]):
 
-					# Crop flux, wvl arrays to only contain the area around the line
+					# Get flux, wvl arrays for each spectrum
 					wvl = kinematics_wvl[:,i,j]
 					flux = data_norm[:,i,j]
 
 					# Apply reddening correction
 					Alam = k_lambda(wvl)*Ebv[i,j]
-					self.data_dered[:,i,j] = flux*(10.**(Alam/(-2.5)))
+					self.data_dered[:,i,j] = flux/np.power(10.,(Alam/(-2.5)))
+
+		if verbose:
+			plt.figure(figsize=(12,5))
+			idx = 48
+			idy = 45
+			plt.plot(kinematics_wvl[:,idx,idy],self.data_dered[:,idx,idy], label='De-reddened')
+			plt.plot(kinematics_wvl[:,idx,idy],data_norm[:,idx,idy], label='Original')
+			plt.xlabel(r'$\lambda (\AA)$', fontsize=16)
+			plt.ylabel('Flux', fontsize=16)
+			plt.legend()
+			plt.xlim(3500,5100)
+			plt.show()
 
 		np.save('output/'+self.galaxyname+'/data_dered', self.data_dered)
 
@@ -887,7 +905,7 @@ def main():
 	#c.binspaxels(verbose=True, targetsn=5., alpha=2.8)
 	#c.stellarkinematics(verbose=True, overwrite=True, snr_mask=1)
 	#c.plotkinematics(instdisp=True)
-	c.reddening(verbose=False, overwrite=False)
+	c.reddening(verbose=True, overwrite=False)
 
 	return
 
