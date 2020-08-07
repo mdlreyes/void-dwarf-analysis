@@ -832,6 +832,26 @@ class Cube:
 			plt.savefig('figures/EBVtest.png', bbox_inches='tight')
 			plt.show()
 
+		print('Applying reddening correction to all spaxels...')
+
+		# Initialize output array
+		self.data_dered = np.zeros(np.shape(data_norm))
+
+		# Loop over all spaxels
+		for i in range(len(data_norm[0,:,0])):
+			for j in range(len(data_norm[0,0,:])):
+				if Ebv[i,j] > 0. and np.isfinite(Ebv[i,j]):
+
+					# Crop flux, wvl arrays to only contain the area around the line
+					wvl = kinematics_wvl[:,i,j]
+					flux = data_norm[:,i,j]
+
+					# Apply reddening correction
+					Alam = k_lambda(wvl)*Ebv[i,j]
+					self.data_dered[:,i,j] = flux*(10.**(Alam/(-2.5)))
+
+		np.save('output/'+self.galaxyname+'/data_dered', self.data_dered)
+
 		return
 
 def main():
