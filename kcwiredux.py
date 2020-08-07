@@ -754,11 +754,12 @@ class Cube:
 		return lineflux, width, snr
 
 	def reddening(self, kinematics=True, verbose=False, overwrite=False):
-		""" Compute and apply reddening correction to each spaxel.
+		""" Compute and apply reddening correction to each spaxel. Only need to run this once per galaxy!
 
 			Arguments:
 				kinematics (bool): if 'True', remove best-fit stellar template (must run stellarkinematics first)
 				verbose (bool): if 'True', make diagnostic plots
+				overwrite (bool): if 'True', overwrite existing data files
 		"""
 
 		print('Computing Balmer decrement...')
@@ -851,6 +852,31 @@ class Cube:
 					self.data_dered[:,i,j] = flux*(10.**(Alam/(-2.5)))
 
 		np.save('output/'+self.galaxyname+'/data_dered', self.data_dered)
+
+		return
+
+	def metallicity_Te(verbose=False, overwrite=False):
+		""" Compute electron temperature metallicities
+
+			Arguments:
+				verbose (bool): if 'True', make diagnostic plots
+				overwrite (bool): if 'True', overwrite existing data files
+		"""
+
+		print('Electron temperature...')
+
+		# Get de-reddened data
+		try:
+			data_norm = self.data_dered
+			kinematics_wvl = self.kinematics_wvl
+		except AttributeError:
+			data_norm = np.load('output/'+self.galaxyname+'/'+'data_dered.npy')
+			kinematics_wvl = np.load('output/'+self.galaxyname+'/'+'kinwvl.npy')
+
+		# Get OIII line maps
+		resultOIII4363 = self.make_emline_map(data_norm, kinematics_wvl, 'OIII4363', overwrite=overwrite)
+		resultOIII4959 = self.make_emline_map(data_norm, kinematics_wvl, 'OIII4959', overwrite=overwrite)
+		resultOIII5007 = self.make_emline_map(data_norm, kinematics_wvl, 'OIII5007', overwrite=overwrite)
 
 		return
 
