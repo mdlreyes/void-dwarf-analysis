@@ -28,6 +28,7 @@ from scipy import ndimage
 
 # Packages for emission line fitting
 from astropy.modeling import models, fitting
+from k_lambda import k_lambda
 
 class Cube:
 	"""
@@ -758,7 +759,7 @@ class Cube:
 				verbose (bool): if 'True', make diagnostic plots
 		"""
 
-		print('Computing metallicity...')
+		print('Computing Balmer decrement...')
 
 		# Remove best-fit stellar template
 		if kinematics:
@@ -817,6 +818,20 @@ class Cube:
 			fig.colorbar(im, ax=ax)
 
 			plt.show()
+
+		print('Computing E(B-V)...')
+
+		# Intrinsic Hgamma/Hbeta ratio (assuming Case B recombination, T=10^4K, electron density 100/cm^3)
+		balmer0 = 0.468
+
+		# Compute E(B-V)
+		Ebv = np.log10(balmer/balmer0)/(-0.4*(k_lambda(wvldict['Hgamma'])-k_lambda(wvldict['Hbeta'])))
+		Ebv[Ebv>10.] = np.nan
+		plt.figure(figsize=(8,8))
+		plt.subplot(projection=wcs,slices=('x', 'y', 50))
+		plt.imshow(Ebv, cmap='viridis', interpolation='nearest')
+		plt.colorbar(label=r'$E(B-V)$')
+		plt.show()
 
 		return
 
