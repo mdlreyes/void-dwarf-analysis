@@ -52,7 +52,7 @@ class Cube:
 
 	"""
 
-	def __init__(self, filename, folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/data/', verbose=False, wcscorr=None, z=0., sn_wvl=[4250.,4340.], wvlrange=[3700., 5100.]):
+	def __init__(self, filename, folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/data/', verbose=False, wcscorr=None, z=0., sn_wvl=[4250.,4340.], wvlrange=[3700., 5100.], Av=0.):
 
 		"""Opens datacube and sets base attributes.
 
@@ -65,6 +65,7 @@ class Cube:
 				z (float): redshift
 				sn_wvl (float list): lower and upper wavelength bounds across which to compute S/N
 				wvlrange (float list): lower and upper wavelength bounds to keep
+				Av (float): A_v value from Schlafly & Finkbeiner (2011), used to correct for Galactic reddening
 		"""
 
 		print('Initializing cube...')
@@ -110,6 +111,17 @@ class Cube:
 		self.z = z
 		self.wvl_zcorr = wvl / (1.+self.z)
 
+		# Do correction for Galactic reddening
+		if Av > 0.:
+			self.data = self.data/np.power(10.,(Av/(-2.5)))
+
+		# Define wavelength range
+		self.wvlsection = np.where((self.wvl_zcorr > sn_wvl[0]) & (self.wvl_zcorr < sn_wvl[1]))[0]
+		self.goodwvl = np.where((self.wvl_zcorr > wvlrange[0]) & (self.wvl_zcorr < wvlrange[1]))[0]
+		self.wvl_cropped = self.wvl_zcorr[self.goodwvl]
+		self.data_cropped = self.data[self.goodwvl, :, :]
+		self.mask_cropped = self.mask[self.goodwvl, :, :]
+
 		# Plot image for testing
 		if verbose:
 
@@ -137,13 +149,6 @@ class Cube:
 			testerror = np.sqrt(self.var[:,idx,idy])
 			plt.fill_between(self.wvl_zcorr,self.data[:,idx,idy]-testerror,self.data[:,idx,idy]+testerror,facecolor='C0',alpha=0.5,edgecolor='None')
 			plt.show()
-
-		# Define wavelength range
-		wvlsection = np.where((self.wvl_zcorr > sn_wvl[0]) & (self.wvl_zcorr < sn_wvl[1]))[0]
-		goodwvl = np.where((self.wvl_zcorr > wvlrange[0]) & (self.wvl_zcorr < wvlrange[1]))[0]
-		self.wvl_cropped = self.wvl_zcorr[goodwvl]
-		self.data_cropped = self.data[goodwvl, :, :]
-		self.mask_cropped = self.mask[goodwvl, :, :]
 
 	def testcovar(self, threshold=60, savedata=False, verbose=False):
 		""" Code to run covariance curve code and set attribute alpha.
@@ -221,16 +226,16 @@ class Cube:
 		ysize = np.shape(self.data[0,:,:])[0]
 
 		# Compute signal/noise
-		signal = np.ma.mean(self.data[wvlsection,:,:], axis=0)
+		signal = np.ma.mean(self.data[self.wvlsection,:,:], axis=0)
 		
 		# Compute noise as detrended standard deviation
 		#noise = np.sqrt(np.ma.mean(self.var[wvlsection,:,:], axis=0))
 		noise = np.zeros(np.shape(signal))
 		for i in range(ysize):
 			for j in range(xsize):
-				linfit = np.polyfit(self.wvl_zcorr[wvlsection],self.data[wvlsection,i,j],deg=1)
+				linfit = np.polyfit(self.wvl_zcorr[self.wvlsection],self.data[self.wvlsection,i,j],deg=1)
 				poly = np.poly1d(linfit)
-				noise[i,j] = np.std(self.data[wvlsection,i,j] - np.asarray(poly(self.wvl_zcorr[wvlsection]))**2.)
+				noise[i,j] = np.std(self.data[self.wvlsection,i,j] - np.asarray(poly(self.wvl_zcorr[self.wvlsection]))**2.)
 
 		# Define S/N
 		sntest = signal/noise
@@ -292,10 +297,10 @@ class Cube:
 		self.bins = np.unique(self.binNum)
 
 		# Make cubes to hold stacked data
-		self.stacked_spec = np.zeros((len(self.bins), len(goodwvl)))
-		self.stacked_errs = np.zeros((len(self.bins), len(goodwvl)))
+		self.stacked_spec = np.zeros((len(self.bins), len(self.goodwvl)))
+		self.stacked_errs = np.zeros((len(self.bins), len(self.goodwvl)))
 		if verbose:
-			stacked_data = np.zeros(np.shape(self.data[goodwvl,:,:])) # For plotting binned image
+			stacked_data = np.zeros(np.shape(self.data[self.goodwvl,:,:])) # For plotting binned image
 
 		# Loop over all bins
 		for binID in range(len(self.bins)):
@@ -311,8 +316,8 @@ class Cube:
 			binned_spec = []
 			binned_err = []
 			for i in range(len(xarray)):
-				binned_spec.append(self.data[goodwvl,np.int(round(xarray[i])),np.int(round(yarray[i]))])
-				binned_err.append(self.var[goodwvl,np.int(round(xarray[i])),np.int(round(yarray[i]))])
+				binned_spec.append(self.data[self.goodwvl,np.int(round(xarray[i])),np.int(round(yarray[i]))])
+				binned_err.append(self.var[self.goodwvl,np.int(round(xarray[i])),np.int(round(yarray[i]))])
 
 			# Loop again over all pixels in the bin and put the new mean spectra in the list
 			if verbose:
@@ -657,7 +662,7 @@ class Cube:
 
 			return copy
 
-		plot(vel, error=vel_err, nan=False, upperlim=100, lowerlim=-100, velshift=-160, cmap='RdBu', title='Velocity (km/s)', mask=velmask)
+		plot(vel, error=vel_err, nan=False, upperlim=100, lowerlim=-100, velshift=-160, cmap='RdBu_r', title='Velocity (km/s)', mask=velmask)
 		plot(veldisp, error=veldisp_err, nan=False, upperlim=300, title=r'$\sigma$ (km/s)', mask=velmask)
 		#plot(vel_err, nan=False, cmap='RdBu', title='Velocity error (km/s)') #mask=velmask, 
 		#plot(veldisp_err, nan=False, upperlim=200, title=r'$\sigma$ error (km/s)') #mask=velmask, 
@@ -809,7 +814,6 @@ class Cube:
 			im=ax.imshow(Hgamma, vmin=0, vmax=1)
 			fig.colorbar(im, ax=ax)
 
-			#balmer[np.isnan(balmer)] = 0.
 			ax = fig.add_subplot(133,projection=self.wcs,slices=('x', 'y', 50))
 			ax.set_title(r'$\mathrm{H}\gamma/\mathrm{H}\beta$')
 			im=ax.imshow(balmer, vmax=0.8)
@@ -900,9 +904,9 @@ class Cube:
 
 def main():
 
-	c = Cube('reines65', folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/data/', verbose=False, wcscorr=[174.17801 - 174.1787083, 26.727126 - 26.7263583], z=0.0331)
+	c = Cube('reines65', folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/data/', verbose=False, wcscorr=[174.17801 - 174.1787083, 26.727126 - 26.7263583], z=0.0331, Av=0.0675)
 	#c.testcovar(threshold=100, verbose=True)
-	#c.binspaxels(verbose=True, targetsn=5., alpha=2.8)
+	c.binspaxels(verbose=False, targetsn=5., alpha=2.8)
 	#c.stellarkinematics(verbose=True, overwrite=True, snr_mask=1)
 	#c.plotkinematics(instdisp=True)
 	c.reddening(verbose=True, overwrite=False)
