@@ -47,7 +47,7 @@ class Cube:
 
 	"""
 
-	def __init__(self, filename, folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/data/', verbose=False, wcscorr=None, z=0.):
+	def __init__(self, filename, folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/data/', verbose=False, wcscorr=None, z=0., sn_wvl=[4250.,4340.], wvlrange=[3700., 5100.]):
 
 		"""Opens datacube and sets base attributes.
 
@@ -58,6 +58,8 @@ class Cube:
 				wcscorr (float list): [delta(RA), delta(Dec)] to correct for pointing errors
 								where delta(RA) = (new RA) - (old RA)
 				z (float): redshift
+				sn_wvl (float list): lower and upper wavelength bounds across which to compute S/N
+				wvlrange (float list): lower and upper wavelength bounds to keep
 		"""
 
 		print('Initializing cube...')
@@ -131,6 +133,13 @@ class Cube:
 			plt.fill_between(self.wvl_zcorr,self.data[:,idx,idy]-testerror,self.data[:,idx,idy]+testerror,facecolor='C0',alpha=0.5,edgecolor='None')
 			plt.show()
 
+		# Define wavelength range
+		wvlsection = np.where((self.wvl_zcorr > sn_wvl[0]) & (self.wvl_zcorr < sn_wvl[1]))[0]
+		goodwvl = np.where((self.wvl_zcorr > wvlrange[0]) & (self.wvl_zcorr < wvlrange[1]))[0]
+		self.wvl_cropped = self.wvl_zcorr[goodwvl]
+		self.data_cropped = self.data[goodwvl, :, :]
+		self.mask_cropped = self.mask[goodwvl, :, :]
+
 	def testcovar(self, threshold=60, savedata=False, verbose=False):
 		""" Code to run covariance curve code and set attribute alpha.
 
@@ -191,25 +200,16 @@ class Cube:
 
 		return
 
-	def binspaxels(self, alpha=1., sn_wvl=[4250.,4340.], wvlrange=[3700., 5100.], verbose=False, targetsn=10.):
+	def binspaxels(self, alpha=1., verbose=False, targetsn=10.):
 		""" Bin spaxels spatially to increase S/N
 
 			Args:
 				alpha (:obj: float): alpha value to be used if testcovar function is not run
-				sn_wvl (float list): lower and upper wavelength bounds across which to compute S/N
-				wvlrange (float list): lower and upper wavelength bounds to keep
 				verbose (bool): if 'True', make test plots
 				targetsn (float): target value of S/N
 		"""
 
 		print('Binning cube...')
-
-		# Define wavelength range
-		wvlsection = np.where((self.wvl_zcorr > sn_wvl[0]) & (self.wvl_zcorr < sn_wvl[1]))[0]
-		goodwvl = np.where((self.wvl_zcorr > wvlrange[0]) & (self.wvl_zcorr < wvlrange[1]))[0]
-		self.wvl_cropped = self.wvl_zcorr[goodwvl]
-		self.data_cropped = self.data[goodwvl, :, :]
-		self.mask_cropped = self.mask[goodwvl, :, :]
 
 		# Define sizes of array
 		xsize = np.shape(self.data[0,:,:])[1]
@@ -438,13 +438,14 @@ class Cube:
 
 		return np.asarray([pp.sol[0], pp.sol[1], pp.error[0]*np.sqrt(pp.chi2), pp.error[1]*np.sqrt(pp.chi2)]), np.exp(logLam1), pp.bestfit
 
-	def stellarkinematics(self, verbose=False, removekinematics=True, overwrite=False):
+	def stellarkinematics(self, verbose=False, removekinematics=True, overwrite=False, snr_mask=1):
 		""" Do stellar kinematics fitting with pPXF. Note: must run prepstellarfit() first!
 
 			Arguments:
 				verbose (bool): if 'True', make diagnostic plots
 				removekinematics (bool): if 'True' (default), output a data_norm cube with best-fit stellar template subtracted
 				overwrite (bool): if 'True', overwrite existing files
+				snr_mask (float): produce velmask.out file marking any bins where S/N > snr_mask
 
 		"""
 
@@ -493,7 +494,7 @@ class Cube:
 					self.veldisp[np.int(round(xarray[i])),np.int(round(yarray[i]))] = params[1]
 					self.vel_err[np.int(round(xarray[i])),np.int(round(yarray[i]))] = params[2]
 					self.veldisp_err[np.int(round(xarray[i])),np.int(round(yarray[i]))] = params[3]
-					if self.sn[binID] > 2:
+					if self.sn[binID] > snr_mask:
 						self.velmask[np.int(round(xarray[i])),np.int(round(yarray[i]))] = 1
 
 					# Add the best-fit solution to arrays
@@ -513,6 +514,12 @@ class Cube:
 				fig = plt.figure(figsize=(8,8))
 				ax = plt.subplot(projection=self.wcs,slices=('x', 'y', 50))
 				plt.imshow(self.vel)
+				plt.colorbar()
+				plt.show()
+
+				fig = plt.figure(figsize=(8,8))
+				ax = plt.subplot(projection=self.wcs,slices=('x', 'y', 50))
+				plt.imshow(self.velmask)
 				plt.colorbar()
 				plt.show()
 
@@ -574,7 +581,7 @@ class Cube:
 			Arguments:
 				vel, veldisp, vel_err, veldisp_err (2D arrays): kinematics measurements
 				(If set to 'None', will use output directly from stellarkinematics())
-				velmask (2D bool array): mask marking bins where total S/N > 8 (1 = good, 0 = bad)
+				velmask (2D bool array): mask marking bins where total S/N > some value (1 = good, 0 = bad)
 				instdisp (bool): if 'True', subtract (in quadrature) instrument dispersion from vel dispersion
 		"""
 
@@ -743,7 +750,7 @@ class Cube:
 
 		return lineflux, width, snr
 
-	def metallicity(self, kinematics=True, verbose=False):
+	def metallicity(self, kinematics=True, verbose=False, overwrite=False):
 		""" Measure metallicities!
 
 			Arguments:
@@ -772,8 +779,8 @@ class Cube:
 			kinematics_wvl = np.broadcast_to(self.wvl_cropped,self.data_cropped.T.shape).T
 
 		# Get Balmer line maps
-		resultHbeta = self.make_emline_map(self.data_norm, kinematics_wvl, 'Hbeta')
-		resultHgamma = self.make_emline_map(self.data_norm, kinematics_wvl, 'Hgamma')
+		resultHbeta = self.make_emline_map(self.data_norm, kinematics_wvl, 'Hbeta', overwrite=overwrite)
+		resultHgamma = self.make_emline_map(self.data_norm, kinematics_wvl, 'Hgamma', overwrite=overwrite)
 
 		if verbose:
 
@@ -817,10 +824,10 @@ def main():
 
 	c = Cube('reines65', folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/data/', verbose=False, wcscorr=[174.17801 - 174.1787083, 26.727126 - 26.7263583], z=0.0331)
 	#c.testcovar(threshold=100, verbose=True)
-	c.binspaxels(verbose=True, targetsn=5., alpha=2.8)
-	#c.stellarkinematics(verbose=False)
+	#c.binspaxels(verbose=True, targetsn=5., alpha=2.8)
+	#c.stellarkinematics(verbose=True, overwrite=True, snr_mask=1)
 	#c.plotkinematics(instdisp=True)
-	#c.metallicity(verbose=True)
+	c.metallicity(verbose=True, overwrite=False)
 
 	return
 
