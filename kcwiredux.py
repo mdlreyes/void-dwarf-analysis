@@ -240,9 +240,10 @@ class Cube:
 		# Define S/N
 		sntest = signal/noise
 		if verbose:
-			plt.imshow(sntest,vmin=0)
+			plt.imshow(sntest)
 			plt.colorbar()
 			plt.show()
+		np.save('output/'+self.galaxyname+'/contsnr', sntest.data)
 
 		# Get zeropoints and deltas for coordinates
 		ra0 = self.header['CRVAL1']
@@ -334,12 +335,12 @@ class Cube:
 			fig = plt.figure(figsize=(12,6))
 			ax = fig.add_subplot(121,projection=self.wcs,slices=('x', 'y', 50))
 			ax.set_title('Original white-light image')
-			im=ax.imshow(np.ma.sum(self.data[wvlsection,:,:], axis=0), vmin=0)
+			im=ax.imshow(np.ma.sum(self.data[self.wvlsection,:,:], axis=0), vmin=0)
 			fig.colorbar(im, ax=ax)
 
 			ax = fig.add_subplot(122,projection=self.wcs,slices=('x', 'y', 50))
 			ax.set_title('Binned white-light image')
-			im=ax.imshow(np.ma.sum(stacked_data[wvlsection,:,:], axis=0), vmin=0)
+			im=ax.imshow(np.ma.sum(stacked_data[self.wvlsection,:,:], axis=0), vmin=0)
 			fig.colorbar(im, ax=ax)
 
 			plt.tight_layout()
@@ -728,7 +729,7 @@ class Cube:
 					# Compute integral
 					integral = np.sqrt(2.*np.pi)*gaussian_fit[0].amplitude*gaussian_fit[0].stddev
 
-					if integral > 0. and gaussian_fit[0].stddev.value < xlim/2. and np.abs(gaussian_fit[0].mean - line) < xlim/2.:
+					if integral > 1.e-3 and gaussian_fit[0].stddev.value < xlim/2. and np.abs(gaussian_fit[0].mean - line) < xlim/2.:
 
 						lineflux[i,j] = integral
 						width[i,j] = gaussian_fit[0].stddev.value
@@ -804,17 +805,17 @@ class Cube:
 
 			fig = plt.figure(figsize=(15,6))
 
-			ax = fig.add_subplot(131,projection=self.wcs,slices=('x', 'y', 50))
+			ax = fig.add_subplot(131) #,projection=self.wcs,slices=('x', 'y', 50))
 			ax.set_title(r'H$\beta$')
 			im=ax.imshow(Hbeta, vmin=0, vmax=1)
 			fig.colorbar(im, ax=ax)
 
-			ax = fig.add_subplot(132,projection=self.wcs,slices=('x', 'y', 50))
+			ax = fig.add_subplot(132) #,projection=self.wcs,slices=('x', 'y', 50))
 			ax.set_title(r'H$\gamma$')
 			im=ax.imshow(Hgamma, vmin=0, vmax=1)
 			fig.colorbar(im, ax=ax)
 
-			ax = fig.add_subplot(133,projection=self.wcs,slices=('x', 'y', 50))
+			ax = fig.add_subplot(133) #,projection=self.wcs,slices=('x', 'y', 50))
 			ax.set_title(r'$\mathrm{H}\gamma/\mathrm{H}\beta$')
 			im=ax.imshow(balmer, vmax=0.8)
 			fig.colorbar(im, ax=ax)
@@ -851,7 +852,7 @@ class Cube:
 		# Loop over all spaxels
 		for i in range(len(data_norm[0,:,0])):
 			for j in range(len(data_norm[0,0,:])):
-				if Ebv[i,j] > 0. and Ebv[i,j] < 1. and np.isfinite(Ebv[i,j]):
+				if np.isfinite(Ebv[i,j]): #Ebv[i,j] > 0. and Ebv[i,j] < 1. and 
 
 					# Get flux, wvl arrays for each spectrum
 					wvl = kinematics_wvl[:,i,j]
@@ -863,8 +864,8 @@ class Cube:
 
 		if verbose:
 			plt.figure(figsize=(12,5))
-			idx = 48
-			idy = 45
+			idx = 45
+			idy = 38
 			plt.plot(kinematics_wvl[:,idx,idy],self.data_dered[:,idx,idy], label='De-reddened')
 			plt.plot(kinematics_wvl[:,idx,idy],data_norm[:,idx,idy], label='Original')
 			plt.xlabel(r'$\lambda (\AA)$', fontsize=16)
@@ -906,10 +907,10 @@ def main():
 
 	c = Cube('reines65', folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/data/', verbose=False, wcscorr=[174.17801 - 174.1787083, 26.727126 - 26.7263583], z=0.0331, Av=0.0675)
 	#c.testcovar(threshold=100, verbose=True)
-	#c.binspaxels(verbose=False, targetsn=5., alpha=2.8)
-	#c.stellarkinematics(verbose=True, overwrite=False, snr_mask=1)
-	c.plotkinematics(instdisp=False)
-	c.reddening(verbose=True, overwrite=False)
+	#c.binspaxels(verbose=True, targetsn=5., alpha=2.8)
+	#c.stellarkinematics(verbose=False, overwrite=False, snr_mask=1)
+	#c.plotkinematics(instdisp=False)
+	c.reddening(verbose=True, overwrite=True)
 
 	return
 
