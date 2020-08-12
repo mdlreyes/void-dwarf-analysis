@@ -115,9 +115,9 @@ class Cube:
 		if Av > 0.:
 			self.data = self.data/np.power(10.,(Av/(-2.5)))
 
-		# Define wavelength range
-		self.wvlsection = np.where((self.wvl_zcorr > sn_wvl[0]) & (self.wvl_zcorr < sn_wvl[1]))[0]
-		self.goodwvl = np.where((self.wvl_zcorr > wvlrange[0]) & (self.wvl_zcorr < wvlrange[1]))[0]
+		# Define wavelength ranges
+		self.wvlsection = np.where((self.wvl_zcorr > sn_wvl[0]) & (self.wvl_zcorr < sn_wvl[1]))[0] # Wavelength range for S/N fitting
+		self.goodwvl = np.where((self.wvl_zcorr > wvlrange[0]) & (self.wvl_zcorr < wvlrange[1]))[0] # Wavelength range for stellar template fitting
 		self.wvl_cropped = self.wvl_zcorr[self.goodwvl]
 		self.data_cropped = self.data[self.goodwvl, :, :]
 		self.mask_cropped = self.mask[self.goodwvl, :, :]
@@ -226,7 +226,7 @@ class Cube:
 		ysize = np.shape(self.data[0,:,:])[0]
 
 		# Compute signal/noise
-		signal = np.ma.mean(self.data[self.wvlsection,:,:], axis=0)
+		signal = np.mean(self.data[self.wvlsection,:,:], axis=0)
 		
 		# Compute noise as detrended standard deviation
 		#noise = np.sqrt(np.ma.mean(self.var[wvlsection,:,:], axis=0))
@@ -243,7 +243,7 @@ class Cube:
 			plt.imshow(sntest)
 			plt.colorbar()
 			plt.show()
-		np.save('output/'+self.galaxyname+'/contsnr', sntest.data)
+		np.save('output/'+self.galaxyname+'/contsnr', sntest)
 
 		# Get zeropoints and deltas for coordinates
 		ra0 = self.header['CRVAL1']
@@ -670,13 +670,14 @@ class Cube:
 
 		return
 
-	def make_emline_map(self, datanorm, wvlnorm, line_name, velmask='velmask.out', xlim=20., overwrite=False):
+	def make_emline_map(self, datanorm, wvlnorm, line_name, velmask='velmask.out', snrmask=3, xlim=10., overwrite=False):
 		""" Fits gas emission lines and makes emission line maps.
 
 			Arguments:
 				datanorm, wvlnorm (3D arrays): data and wavelength arrays to be fit
 				line_name (string): name of line to fit
 				velmask (2D bool array): mask marking bins where total S/N > 8 (1 = good, 0 = bad)
+				snrmask (float): if not None, do continuum S/N cut on individual spaxels
 				xlim (float): in Angstroms, half of wavelength range about line center to fit
 				overwrite (bool): if 'True', overwrite any existing files
 
@@ -688,16 +689,27 @@ class Cube:
 
 		# Check if data already exists
 		flux_file = 'output/'+self.galaxyname+'/'+line_name+'_flux.out'
-		width_file = 'output/'+self.galaxyname+'/'+line_name+'_width.out'
+		fluxerr_file = 'output/'+self.galaxyname+'/'+line_name+'_fluxerr.out'
+		width_file = 'output/'+self.galaxyname+'/'+line_name+'_std.out'
+		widtherr_file = 'output/'+self.galaxyname+'/'+line_name+'_stderr.out'
 		snr_file = 'output/'+self.galaxyname+'/'+line_name+'_snr.out'
 		if overwrite==False and os.path.exists(flux_file) and os.path.exists(width_file) and os.path.exists(snr_file):
 			return np.loadtxt(flux_file), np.loadtxt(width_file), np.loadtxt(snr_file)
 
-		# Define where to measure emission lines
-		if velmask=='velmask.out':
+		# Define where to measure emission lines based on velocity measurements
+		if velmask =='velmask.out':
 			velmask = np.loadtxt('output/'+self.galaxyname+'/'+velmask)
 		else:
 			velmask = self.velmask
+
+		# Define where to measure emission lines based on continuum S/N
+		if snrmask is not None:
+			snrfile = np.load('output/'+self.galaxyname+'/contsnr.npy')
+			snrtest = np.ones(np.shape(snrfile), dtype=bool)
+			snrtest[snrfile < snrmask] = False
+
+		else:
+			snrtest = np.ones(np.shape(velmask), dtype=bool)
 
 		# Get central line wavelength
 		line = wvldict[line_name]
@@ -705,43 +717,53 @@ class Cube:
 		# Mask out any bad pixels
 		datanorm = np.ma.array(datanorm, mask=self.mask_cropped)
 		wvlnorm = np.ma.array(wvlnorm, mask=self.mask_cropped)
+		errors = np.ma.array(np.sqrt(self.var[self.goodwvl, :, :]), mask=self.mask_cropped)
 
 		# Prep arrays to hold outputs
 		lineflux = np.zeros(np.shape(datanorm[0,:,:]))
+		lineflux_err = np.zeros(np.shape(datanorm[0,:,:]))
 		width = np.zeros(np.shape(datanorm[0,:,:]))
+		width_err = np.zeros(np.shape(datanorm[0,:,:]))
 		snr = np.zeros(np.shape(datanorm[0,:,:]))
 
 		# Loop over all spaxels
 		for i in range(len(datanorm[0,:,0])):
 			for j in range(len(datanorm[0,0,:])):
-				if velmask[i,j]:
+				if velmask[i,j] and snrtest[i,j]:
 
 					# Crop flux, wvl arrays to only contain the area around the line
 					idx = np.where((wvlnorm[:,i,j] > (line-xlim)) & (wvlnorm[:,i,j] < (line+xlim)))[0]
 					wvl = wvlnorm[:,i,j][idx]
 					flux = datanorm[:,i,j][idx]
+					err = errors[:,i,j][idx]
 
 					# Fit line with Gaussian + linear background
 					gaussian_model = models.Gaussian1D(np.max(flux), line, 2) + models.Linear1D(0,0)
 					fitter = fitting.LevMarLSQFitter()
-					gaussian_fit = fitter(gaussian_model, wvl, flux)
+					gaussian_fit = fitter(gaussian_model, wvl, flux, weights=1./err)
 
-					# Compute integral
-					integral = np.sqrt(2.*np.pi)*gaussian_fit[0].amplitude*gaussian_fit[0].stddev
+					# Get best-fit parameters
+					params = gaussian_fit.parameters
+					amp, mean, stddev = params[0:3]
 
-					if integral > 1.e-3 and gaussian_fit[0].stddev.value < xlim/2. and np.abs(gaussian_fit[0].mean - line) < xlim/2.:
+					try:
+						paramerrs = np.sqrt(np.diag(fitter.fit_info['param_cov']))
+						amp_err, mean_err, stddev_err = paramerrs[0:3]
+					except:
+						amp_err, mean_err, stddev_err = [np.nan, np.nan, np.nan]
 
-						lineflux[i,j] = integral
-						width[i,j] = gaussian_fit[0].stddev.value
+					integral = np.sqrt(2.*np.pi)*amp*stddev
+
+					if integral > 1e-3 and stddev < xlim/2. and np.abs(mean - line) < xlim/2.: # and amp_err < amp: #and gaussian_fit[0].stddev.value*2.355 > 2.4
 
 						# Compute SNR
-						emidx = np.where((wvlnorm[:,i,j] > (gaussian_fit[0].mean-2.5*gaussian_fit[0].stddev)) & (wvlnorm[:,i,j] < (gaussian_fit[0].mean+2.5*gaussian_fit[0].stddev)))[0]
-						emflux = datanorm[:,i,j][emidx]
+						emidx = np.where((wvl > (mean-2.5*stddev)) & (wvl < (mean+2.5*stddev)))[0]
+						emflux = flux[emidx]
 
-						cont1idx = np.where((wvlnorm[:,i,j] < (gaussian_fit[0].mean-5*gaussian_fit[0].stddev)))[0]
-						cont2idx = np.where((wvlnorm[:,i,j] > (gaussian_fit[0].mean+5*gaussian_fit[0].stddev)))[0]
-						contflux1 = datanorm[:,i,j][cont1idx]
-						contflux2 = datanorm[:,i,j][cont2idx]
+						cont1idx = np.where((wvl < (mean-5*stddev)))[0]
+						cont2idx = np.where((wvl > (mean+5*stddev)))[0]
+						contflux1 = flux[cont1idx]
+						contflux2 = flux[cont2idx]
 
 						signal = np.sum(emflux - np.mean(np.hstack((contflux1,contflux2)))) / np.sqrt(len(emflux))
 						noisecont = (np.std(contflux1) + np.std(contflux2)) / 2. # Continuum noise
@@ -749,12 +771,20 @@ class Cube:
 						noisepois = np.std(pois/np.sum(pois)*np.sqrt(emflux)) # Poisson noise
 						noise = np.sqrt(noisecont**2. + noisepois**2.)
 
+						if signal > 0.:
+							lineflux[i,j] = integral
+							lineflux_err[i,j] = integral * np.sqrt(2.*np.pi)*np.sqrt((amp_err/amp)**2. + (stddev_err/stddev)**2.)
+							width[i,j] = stddev
+							width_err[i,j] = stddev_err
+
 						if signal/noise > 0.:
 							snr[i,j] = signal/noise
 
 		# Save data
 		np.savetxt(flux_file, lineflux)
+		np.savetxt(fluxerr_file, lineflux_err)
 		np.savetxt(width_file, width)
+		np.savetxt(widtherr_file, lineflux_err)
 		np.savetxt(snr_file, snr)
 
 		return lineflux, width, snr
@@ -786,8 +816,8 @@ class Cube:
 			kinematics_wvl = np.broadcast_to(self.wvl_cropped,self.data_cropped.T.shape).T
 
 		# Get Balmer line maps
-		resultHbeta = self.make_emline_map(data_norm, kinematics_wvl, 'Hbeta', overwrite=overwrite)
 		resultHgamma = self.make_emline_map(data_norm, kinematics_wvl, 'Hgamma', overwrite=overwrite)
+		resultHbeta = self.make_emline_map(data_norm, kinematics_wvl, 'Hbeta', overwrite=overwrite)
 
 		# Compute relevant quantities
 		Hbeta = np.copy(resultHbeta[0])
@@ -833,7 +863,7 @@ class Cube:
 		if verbose:
 			plt.figure(figsize=(8,8))
 			#plt.subplot(projection=self.wcs,slices=('x', 'y', 50))
-			plt.imshow(Ebv, cmap='viridis', interpolation='nearest', vmin=0, vmax=5)
+			plt.imshow(Ebv, cmap='viridis', interpolation='nearest', vmin=0, vmax=1)
 			plt.colorbar(label=r'$E(B-V)$')
 			plt.savefig('figures/EBVtest.png', bbox_inches='tight')
 			plt.show()
@@ -864,8 +894,8 @@ class Cube:
 
 		if verbose:
 			plt.figure(figsize=(12,5))
-			idx = 45
-			idy = 38
+			idx = 40
+			idy = 36
 			plt.plot(kinematics_wvl[:,idx,idy],self.data_dered[:,idx,idy], label='De-reddened')
 			plt.plot(kinematics_wvl[:,idx,idy],data_norm[:,idx,idy], label='Original')
 			plt.xlabel(r'$\lambda (\AA)$', fontsize=16)
@@ -910,7 +940,7 @@ def main():
 	#c.binspaxels(verbose=True, targetsn=5., alpha=2.8)
 	#c.stellarkinematics(verbose=False, overwrite=False, snr_mask=1)
 	#c.plotkinematics(instdisp=False)
-	c.reddening(verbose=True, overwrite=True)
+	c.reddening(verbose=True, overwrite=False)
 
 	return
 
