@@ -52,7 +52,7 @@ class Cube:
 
 	"""
 
-	def __init__(self, filename, folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/data/', verbose=False, wcscorr=None, z=0., sn_wvl=[4250.,4340.], wvlrange=[3700., 5100.], Av=0.):
+	def __init__(self, filename, folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/data/', verbose=False, wcscorr=None, z=0., sn_wvl=[4250.,4300.], wvlrange=[3700., 5100.], Av=0.):
 
 		"""Opens datacube and sets base attributes.
 
@@ -243,7 +243,7 @@ class Cube:
 			plt.imshow(sntest)
 			plt.colorbar()
 			plt.show()
-		np.save('output/'+self.galaxyname+'/contsnr', sntest)
+		np.save('output/'+self.galaxyname+'/contsnr', np.ma.getdata(sntest))
 
 		# Get zeropoints and deltas for coordinates
 		ra0 = self.header['CRVAL1']
@@ -475,6 +475,8 @@ class Cube:
 
 			self.kinematics_fit = np.zeros(np.shape(self.data_cropped))
 			self.kinematics_wvl = np.zeros(np.shape(self.data_cropped))
+			self.kinematics_fit_bin = np.zeros(np.shape(self.stacked_spec))
+			self.kinematics_wvl_bin = np.zeros(np.shape(self.stacked_spec))
 
 			# Get zeropoints and deltas for coordinates
 			ra0 = self.header['CRVAL1']
@@ -491,6 +493,10 @@ class Cube:
 
 				# Do stellar kinematic fit
 				params, fitwvl, fit = self.ppxf_fit(self.stacked_spec[binID], self.stacked_errs[binID], verbose=False)
+
+				# Put fit for each bin into an array
+				self.kinematics_fit_bin[binID] = fit
+				self.kinematics_wvl_bin[binID] = fitwvl
 
 				# Get all IDs in that bin
 				idx = np.where(self.binNum==self.bins[binID])[0]
@@ -520,6 +526,8 @@ class Cube:
 
 			np.save('output/'+self.galaxyname+'/kinfit', self.kinematics_fit)
 			np.save('output/'+self.galaxyname+'/kinwvl', self.kinematics_wvl)
+			np.save('output/'+self.galaxyname+'/kinfit_bin', self.kinematics_fit_bin)
+			np.save('output/'+self.galaxyname+'/kinwvl_bin', self.kinematics_wvl_bin)
 
 			if verbose:
 				fig = plt.figure(figsize=(8,8))
@@ -539,16 +547,19 @@ class Cube:
 			self.prepstellarfit()
 			self.kinematics_fit = np.load('output/'+self.galaxyname+'/kinfit.npy')
 			self.kinematics_wvl = np.load('output/'+self.galaxyname+'/kinwvl.npy')
+			self.kinematics_fit_bin = np.load('output/'+self.galaxyname+'/kinfit_bin.npy')
+			self.kinematics_wvl_bin = np.load('output/'+self.galaxyname+'/kinwvl_bin.npy')
 
 		# Remove best-fit stellar template from each spaxel
 		if removekinematics:
 
-			print('Normalizing data by best-fit stellar template...')
+			print('Normalizing data by best-fit stellar template for each spaxel...')
 
 			# Define sizes of array
 			xsize = np.shape(self.data[0,:,:])[1]
 			ysize = np.shape(self.data[0,:,:])[0]
 
+			# Prep array for output
 			self.data_norm = np.zeros(np.shape(self.data_cropped))
 
 			for i in range(xsize):
@@ -562,24 +573,55 @@ class Cube:
 					galaxy, logLam1, velscale = util.log_rebin(self.lamRange1, galspec)
 					self.data_norm[:,i,j] = galaxy
 
+			# Subtract kinematics fit from data and save file
 			self.data_norm = self.data_norm - self.kinematics_fit*np.median(self.data_norm, axis=0)
-
 			np.save('output/'+self.galaxyname+'/data_norm', self.data_norm)
+
+			print('Normalizing data by best-fit stellar template for each bin...')
+
+			# Prep array for output
+			self.data_norm_bin = np.zeros(np.shape(self.stacked_spec))
+
+			# Loop over all bins
+			for binID in range(len(self.bins)):
+
+				# Smooth observed spectrum to match template
+				spectrum = self.stacked_spec[binID]
+				galspec = ndimage.gaussian_filter1d(spectrum, self.sigma)
+
+				# Save log-rebinned spectrum
+				galaxy, logLam1, velscale = util.log_rebin(self.lamRange1, galspec)
+
+				# Subtract kinematics fit from binned data
+				self.data_norm_bin[binID] = galaxy - self.kinematics_fit_bin[binID]*np.median(galaxy)
+
+			# Save file
+			np.save('output/'+self.galaxyname+'/data_norm_bin', self.data_norm_bin)
 
 			# Plot image for testing
 			if verbose:
 
 				# Plot example spectrum
 				plt.figure(figsize=(12,5))
-				idx = 46
+				idx = 60
 				idy = 40
-				#plt.plot(self.kinematics_wvl[:,idx,idy],self.data_norm[:,idx,idy])
-				#plt.plot(self.kinematics_wvl[:,idx,idy],(self.kinematics_fit*np.ma.median(self.data_norm, axis=0))[:,idx,idy])
+				plt.title('single spaxel')
 				plt.plot(self.kinematics_wvl[:,idx,idy], self.data_norm[:,idx,idy])
-
 				plt.xlabel(r'$\lambda (\AA)$', fontsize=16)
 				plt.ylabel('Flux', fontsize=16)
 				plt.xlim(3500,5100)
+
+				# Plot example spectrum
+				plt.figure(figsize=(12,5))
+				plt.title('single bin')
+				idx = 100
+				plt.plot(self.kinematics_wvl_bin[idx], self.data_norm_bin[idx])
+				plt.xlabel(r'$\lambda (\AA)$', fontsize=16)
+				plt.ylabel('Flux', fontsize=16)
+				plt.xlim(3500,5100)
+
+				# Plot error
+				plt.show()
 
 				# Plot error
 				plt.show()
@@ -670,16 +712,17 @@ class Cube:
 
 		return
 
-	def make_emline_map(self, datanorm, wvlnorm, line_name, velmask='velmask.out', snrmask=3, xlim=10., overwrite=False):
+	def make_emline_map(self, datanorm, wvlnorm, errnorm, line_name, velmask='velmask.out', snrmask=3, xlim=10., overwrite=False, binned=False):
 		""" Fits gas emission lines and makes emission line maps.
 
 			Arguments:
-				datanorm, wvlnorm (3D arrays): data and wavelength arrays to be fit
+				datanorm, wvlnorm, errnorm (3D arrays): data, wavelength, and error arrays to be fit
 				line_name (string): name of line to fit
 				velmask (2D bool array): mask marking bins where total S/N > 8 (1 = good, 0 = bad)
 				snrmask (float): if not None, do continuum S/N cut on individual spaxels
 				xlim (float): in Angstroms, half of wavelength range about line center to fit
 				overwrite (bool): if 'True', overwrite any existing files
+				binned (bool): if 'True', make emission line map of individual bins
 
 			Returns:
 				lineflux, width (2D arrays): output line flux and width maps
@@ -687,12 +730,17 @@ class Cube:
 
 		print('Making emission line map of '+line_name+'...')
 
+		# Output path
+		outpath = 'output/'+self.galaxyname+'/'+line_name
+		if binned:
+			outpath = outpath+'_binned'
+
 		# Check if data already exists
-		flux_file = 'output/'+self.galaxyname+'/'+line_name+'_flux.out'
-		fluxerr_file = 'output/'+self.galaxyname+'/'+line_name+'_fluxerr.out'
-		width_file = 'output/'+self.galaxyname+'/'+line_name+'_std.out'
-		widtherr_file = 'output/'+self.galaxyname+'/'+line_name+'_stderr.out'
-		snr_file = 'output/'+self.galaxyname+'/'+line_name+'_snr.out'
+		flux_file = outpath+'_flux.out'
+		fluxerr_file = outpath+'_fluxerr.out'
+		width_file = outpath+'_std.out'
+		widtherr_file = outpath+'_stderr.out'
+		snr_file = outpath+'_snr.out'
 		if overwrite==False and os.path.exists(flux_file) and os.path.exists(width_file) and os.path.exists(snr_file):
 			return np.loadtxt(flux_file), np.loadtxt(width_file), np.loadtxt(snr_file)
 
@@ -717,59 +765,77 @@ class Cube:
 		# Mask out any bad pixels
 		datanorm = np.ma.array(datanorm, mask=self.mask_cropped)
 		wvlnorm = np.ma.array(wvlnorm, mask=self.mask_cropped)
-		errors = np.ma.array(np.sqrt(self.var[self.goodwvl, :, :]), mask=self.mask_cropped)
+		errors = np.ma.array(errnorm, mask=self.mask_cropped)
 
 		# Prep arrays to hold outputs
-		lineflux = np.zeros(np.shape(datanorm[0,:,:]))
-		lineflux_err = np.zeros(np.shape(datanorm[0,:,:]))
-		width = np.zeros(np.shape(datanorm[0,:,:]))
-		width_err = np.zeros(np.shape(datanorm[0,:,:]))
-		snr = np.zeros(np.shape(datanorm[0,:,:]))
+		if binned == False:
+			lineflux = np.zeros(np.shape(datanorm[0,:,:]))
+			lineflux_err = np.zeros(np.shape(datanorm[0,:,:]))
+			width = np.zeros(np.shape(datanorm[0,:,:]))
+			width_err = np.zeros(np.shape(datanorm[0,:,:]))
+			snr = np.zeros(np.shape(datanorm[0,:,:]))
+		else:
+			lineflux = np.zeros(len(self.bins))
+			lineflux_err = np.zeros(len(self.bins))
+			width = np.zeros(len(self.bins))
+			width_err = np.zeros(len(self.bins))
+			snr = np.zeros(len(self.bins))
 
-		# Loop over all spaxels
-		for i in range(len(datanorm[0,:,0])):
-			for j in range(len(datanorm[0,0,:])):
-				if velmask[i,j] and snrtest[i,j]:
+		def fitline(wvl, flux, err, line):
+			''' Function to fit line '''
 
-					# Crop flux, wvl arrays to only contain the area around the line
-					idx = np.where((wvlnorm[:,i,j] > (line-xlim)) & (wvlnorm[:,i,j] < (line+xlim)))[0]
-					wvl = wvlnorm[:,i,j][idx]
-					flux = datanorm[:,i,j][idx]
-					err = errors[:,i,j][idx]
+			# Fit line with Gaussian + linear background
+			gaussian_model = models.Gaussian1D(np.max(flux), line, 2) + models.Linear1D(0,0)
+			fitter = fitting.LevMarLSQFitter()
+			gaussian_fit = fitter(gaussian_model, wvl, flux, weights=1./err)
 
-					# Fit line with Gaussian + linear background
-					gaussian_model = models.Gaussian1D(np.max(flux), line, 2) + models.Linear1D(0,0)
-					fitter = fitting.LevMarLSQFitter()
-					gaussian_fit = fitter(gaussian_model, wvl, flux, weights=1./err)
+			# Get best-fit parameters
+			params = gaussian_fit.parameters
+			amp, mean, stddev = params[0:3]
 
-					# Get best-fit parameters
-					params = gaussian_fit.parameters
-					amp, mean, stddev = params[0:3]
+			try:
+				paramerrs = np.sqrt(np.diag(fitter.fit_info['param_cov']))
+				amp_err, mean_err, stddev_err = paramerrs[0:3]
+			except:
+				amp_err, mean_err, stddev_err = [np.nan, np.nan, np.nan]
 
-					try:
-						paramerrs = np.sqrt(np.diag(fitter.fit_info['param_cov']))
-						amp_err, mean_err, stddev_err = paramerrs[0:3]
-					except:
-						amp_err, mean_err, stddev_err = [np.nan, np.nan, np.nan]
+			integral = np.sqrt(2.*np.pi)*amp*stddev
 
-					integral = np.sqrt(2.*np.pi)*amp*stddev
+			if integral > 1e-3 and stddev < xlim/2. and np.abs(mean - line) < xlim/2.: # and amp_err < amp: #and gaussian_fit[0].stddev.value*2.355 > 2.4
 
-					if integral > 1e-3 and stddev < xlim/2. and np.abs(mean - line) < xlim/2.: # and amp_err < amp: #and gaussian_fit[0].stddev.value*2.355 > 2.4
+					# Compute SNR
+					emidx = np.where((wvl > (mean-2.5*stddev)) & (wvl < (mean+2.5*stddev)))[0]
+					emflux = flux[emidx]
 
-						# Compute SNR
-						emidx = np.where((wvl > (mean-2.5*stddev)) & (wvl < (mean+2.5*stddev)))[0]
-						emflux = flux[emidx]
+					cont1idx = np.where((wvl < (mean-5*stddev)))[0]
+					cont2idx = np.where((wvl > (mean+5*stddev)))[0]
+					contflux1 = flux[cont1idx]
+					contflux2 = flux[cont2idx]
 
-						cont1idx = np.where((wvl < (mean-5*stddev)))[0]
-						cont2idx = np.where((wvl > (mean+5*stddev)))[0]
-						contflux1 = flux[cont1idx]
-						contflux2 = flux[cont2idx]
+					signal = np.sum(emflux - np.mean(np.hstack((contflux1,contflux2)))) / np.sqrt(len(emflux))
+					noisecont = (np.std(contflux1) + np.std(contflux2)) / 2. # Continuum noise
+					pois = np.random.poisson(size=len(emflux))
+					noisepois = np.std(pois/np.sum(pois)*np.sqrt(emflux)) # Poisson noise
+					noise = np.sqrt(noisecont**2. + noisepois**2.)
 
-						signal = np.sum(emflux - np.mean(np.hstack((contflux1,contflux2)))) / np.sqrt(len(emflux))
-						noisecont = (np.std(contflux1) + np.std(contflux2)) / 2. # Continuum noise
-						pois = np.random.poisson(size=len(emflux))
-						noisepois = np.std(pois/np.sum(pois)*np.sqrt(emflux)) # Poisson noise
-						noise = np.sqrt(noisecont**2. + noisepois**2.)
+			else:
+				signal, noise = [np.nan, np.nan]
+
+			return amp, mean, stddev, amp_err, mean_err, stddev_err, integral, signal, noise
+
+		if binned==False:
+			# Loop over all spaxels
+			for i in range(len(datanorm[0,:,0])):
+				for j in range(len(datanorm[0,0,:])):
+					if velmask[i,j] and snrtest[i,j]:
+
+						# Crop flux, wvl arrays to only contain the area around the line
+						idx = np.where((wvlnorm[:,i,j] > (line-xlim)) & (wvlnorm[:,i,j] < (line+xlim)))[0]
+						wvl = wvlnorm[:,i,j][idx]
+						flux = datanorm[:,i,j][idx]
+						err = errors[:,i,j][idx]
+
+						amp, mean, stddev, amp_err, mean_err, stddev_err, integral, signal, noise = fitline(wvl, flux, err, line)
 
 						if signal > 0.:
 							lineflux[i,j] = integral
@@ -779,6 +845,27 @@ class Cube:
 
 						if signal/noise > 0.:
 							snr[i,j] = signal/noise
+
+		else:
+			# Loop over all bins
+			for binID in range(len(self.bins)):
+
+				# Crop flux, wvl arrays to only contain the area around the line
+				idx = np.where((wvlnorm[binID] > (line-xlim)) & (wvlnorm[binID] < (line+xlim)))[0]
+				wvl = wvlnorm[binID][idx]
+				flux = datanorm[binID][idx]
+				err = errors[binID][idx]
+
+				amp, mean, stddev, amp_err, mean_err, stddev_err, integral, signal, noise = fitline(wvl, flux, err, line)
+
+				if signal > 0.:
+					lineflux[binID] = integral
+					lineflux_err[binID] = integral * np.sqrt(2.*np.pi)*np.sqrt((amp_err/amp)**2. + (stddev_err/stddev)**2.)
+					width[binID] = stddev
+					width_err[binID] = stddev_err
+
+				if signal/noise > 0.:
+					snr[binID] = signal/noise
 
 		# Save data
 		np.savetxt(flux_file, lineflux)
@@ -816,8 +903,8 @@ class Cube:
 			kinematics_wvl = np.broadcast_to(self.wvl_cropped,self.data_cropped.T.shape).T
 
 		# Get Balmer line maps
-		resultHgamma = self.make_emline_map(data_norm, kinematics_wvl, 'Hgamma', overwrite=overwrite)
-		resultHbeta = self.make_emline_map(data_norm, kinematics_wvl, 'Hbeta', overwrite=overwrite)
+		resultHgamma = self.make_emline_map(data_norm, kinematics_wvl, 'Hgamma', np.sqrt(self.var[self.goodwvl, :, :]), overwrite=overwrite)
+		resultHbeta = self.make_emline_map(data_norm, kinematics_wvl, 'Hbeta', np.sqrt(self.var[self.goodwvl, :, :]), overwrite=overwrite)
 
 		# Compute relevant quantities
 		Hbeta = np.copy(resultHbeta[0])
@@ -937,10 +1024,10 @@ def main():
 
 	c = Cube('reines65', folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/data/', verbose=False, wcscorr=[174.17801 - 174.1787083, 26.727126 - 26.7263583], z=0.0331, Av=0.0675)
 	#c.testcovar(threshold=100, verbose=True)
-	#c.binspaxels(verbose=True, targetsn=5., alpha=2.8)
-	#c.stellarkinematics(verbose=False, overwrite=False, snr_mask=1)
+	c.binspaxels(verbose=False, targetsn=5., alpha=2.8)
+	c.stellarkinematics(verbose=True, overwrite=False, snr_mask=1)
 	#c.plotkinematics(instdisp=False)
-	c.reddening(verbose=True, overwrite=False)
+	#c.reddening(verbose=True, overwrite=False)
 
 	return
 
