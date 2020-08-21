@@ -52,7 +52,7 @@ class Cube:
 
 	"""
 
-	def __init__(self, filename, folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/data/', verbose=False, wcscorr=None, z=0., sn_wvl=[4250.,4300.], wvlrange=[3700., 5100.], Av=0.):
+	def __init__(self, filename, folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/data/', verbose=False, wcscorr=None, z=0., sn_wvl=[4250.,4300.], wvlrange=[3700., 5100.], EBV=0.):
 
 		"""Opens datacube and sets base attributes.
 
@@ -65,7 +65,7 @@ class Cube:
 				z (float): redshift
 				sn_wvl (float list): lower and upper wavelength bounds across which to compute S/N
 				wvlrange (float list): lower and upper wavelength bounds to keep
-				Av (float): A_v value from Schlafly & Finkbeiner (2011), used to correct for Galactic reddening
+				EBV (float): E(B-V) value from Schlafly & Finkbeiner (2011), used to correct for Galactic reddening
 		"""
 
 		print('Initializing cube...')
@@ -112,8 +112,10 @@ class Cube:
 		self.wvl_zcorr = wvl / (1.+self.z)
 
 		# Do correction for Galactic reddening
-		if Av > 0.:
-			self.data = self.data/np.power(10.,(Av/(-2.5)))
+		if EBV > 0.:
+			Alam = k_lambda(self.wvl_zcorr)*EBV
+			Alam_array = np.tile(Alam[:, np.newaxis, np.newaxis], (1, self.data.shape[1], self.data.shape[2]))
+			self.data = self.data/np.power(10.,(Alam_array/(-2.5)))
 
 		# Define wavelength ranges
 		self.wvlsection = np.where((self.wvl_zcorr > sn_wvl[0]) & (self.wvl_zcorr < sn_wvl[1]))[0] # Wavelength range for S/N fitting
@@ -121,6 +123,12 @@ class Cube:
 		self.wvl_cropped = self.wvl_zcorr[self.goodwvl]
 		self.data_cropped = self.data[self.goodwvl, :, :]
 		self.mask_cropped = self.mask[self.goodwvl, :, :]
+
+		# Get zeropoints and deltas for coordinates
+		self.ra0 = self.header['CRVAL1']
+		self.dec0 = self.header['CRVAL2']
+		self.rad = self.header['CD1_1'] # RA degrees per col
+		self.decd = self.header['CD2_2'] # Dec degrees per row
 
 		# Plot image for testing
 		if verbose:
@@ -245,12 +253,6 @@ class Cube:
 			plt.show()
 		np.save('output/'+self.galaxyname+'/contsnr', np.ma.getdata(sntest))
 
-		# Get zeropoints and deltas for coordinates
-		ra0 = self.header['CRVAL1']
-		dec0 = self.header['CRVAL2']
-		rad = self.header['CD1_1'] # RA degrees per col
-		decd = self.header['CD2_2'] # Dec degrees per row
-
 		# Prep data for binning by making lists that vorbin can read
 		x = []
 		y = []
@@ -261,8 +263,8 @@ class Cube:
 				if sntest[i,j] > 1.:
 
 					# Convert from RA/Dec to image coords
-					x.append(ra0 - i*rad)
-					y.append(dec0 + j*decd)
+					x.append(self.ra0 - i*self.rad)
+					y.append(self.dec0 + j*self.decd)
 
 					# Also append signal and noise to list
 					s.append(signal[i,j])
@@ -310,8 +312,8 @@ class Cube:
 			idx = np.where(self.binNum==self.bins[binID])[0]
 
 			# Get RA/Dec of all the pixels in a bin
-			xarray = np.asarray(-(self.x[idx]-ra0)/rad)
-			yarray = np.asarray((self.y[idx]-dec0)/decd)
+			xarray = np.asarray(-(self.x[idx]-self.ra0)/self.rad)
+			yarray = np.asarray((self.y[idx]-self.dec0)/self.decd)
 
 			# Loop over all pixels in the bin and append the spectrum and errors from each pixel to lists
 			binned_spec = []
@@ -478,12 +480,6 @@ class Cube:
 			self.kinematics_fit_bin = np.zeros(np.shape(self.stacked_spec))
 			self.kinematics_wvl_bin = np.zeros(np.shape(self.stacked_spec))
 
-			# Get zeropoints and deltas for coordinates
-			ra0 = self.header['CRVAL1']
-			dec0 = self.header['CRVAL2']
-			rad = self.header['CD1_1'] # RA degrees per col
-			decd = self.header['CD2_2'] # Dec degrees per row
-
 			print('Doing stellar kinematics fit...')
 
 			# Loop over all bins
@@ -502,8 +498,8 @@ class Cube:
 				idx = np.where(self.binNum==self.bins[binID])[0]
 
 				# Get RA/Dec of all the pixels in a bin
-				xarray = np.asarray(-(self.x[idx]-ra0)/rad)
-				yarray = np.asarray((self.y[idx]-dec0)/decd)
+				xarray = np.asarray(-(self.x[idx]-self.ra0)/self.rad)
+				yarray = np.asarray((self.y[idx]-self.dec0)/self.decd)
 
 				# Loop over all pixels in the bin and append the spectrum and errors from each pixel to lists
 				for i in range(len(xarray)):
@@ -742,7 +738,7 @@ class Cube:
 		widtherr_file = outpath+'_stderr.out'
 		snr_file = outpath+'_snr.out'
 		if overwrite==False and os.path.exists(flux_file) and os.path.exists(width_file) and os.path.exists(snr_file):
-			return np.loadtxt(flux_file), np.loadtxt(width_file), np.loadtxt(snr_file)
+			return np.loadtxt(flux_file), np.loadtxt(fluxerr_file), np.loadtxt(width_file), np.loadtxt(widtherr_file), np.loadtxt(snr_file)
 
 		# Define where to measure emission lines based on velocity measurements
 		if velmask =='velmask.out':
@@ -761,11 +757,6 @@ class Cube:
 
 		# Get central line wavelength
 		line = wvldict[line_name]
-
-		# Mask out any bad pixels
-		datanorm = np.ma.array(datanorm, mask=self.mask_cropped)
-		wvlnorm = np.ma.array(wvlnorm, mask=self.mask_cropped)
-		errors = np.ma.array(errnorm, mask=self.mask_cropped)
 
 		# Prep arrays to hold outputs
 		if binned == False:
@@ -833,7 +824,7 @@ class Cube:
 						idx = np.where((wvlnorm[:,i,j] > (line-xlim)) & (wvlnorm[:,i,j] < (line+xlim)))[0]
 						wvl = wvlnorm[:,i,j][idx]
 						flux = datanorm[:,i,j][idx]
-						err = errors[:,i,j][idx]
+						err = errnorm[:,i,j][idx]
 
 						amp, mean, stddev, amp_err, mean_err, stddev_err, integral, signal, noise = fitline(wvl, flux, err, line)
 
@@ -854,7 +845,7 @@ class Cube:
 				idx = np.where((wvlnorm[binID] > (line-xlim)) & (wvlnorm[binID] < (line+xlim)))[0]
 				wvl = wvlnorm[binID][idx]
 				flux = datanorm[binID][idx]
-				err = errors[binID][idx]
+				err = errnorm[binID][idx]
 
 				amp, mean, stddev, amp_err, mean_err, stddev_err, integral, signal, noise = fitline(wvl, flux, err, line)
 
@@ -871,26 +862,36 @@ class Cube:
 		np.savetxt(flux_file, lineflux)
 		np.savetxt(fluxerr_file, lineflux_err)
 		np.savetxt(width_file, width)
-		np.savetxt(widtherr_file, lineflux_err)
+		np.savetxt(widtherr_file, width_err)
 		np.savetxt(snr_file, snr)
 
-		return lineflux, width, snr
+		return lineflux, lineflux_err, width, width_err, snr
 
-	def reddening(self, kinematics=True, verbose=False, overwrite=False):
+	def reddening(self, verbose=False, overwrite=False, binned=False):
 		""" Compute and apply reddening correction to each spaxel. Only need to run this once per galaxy!
 
 			Arguments:
-				kinematics (bool): if 'True', remove best-fit stellar template (must run stellarkinematics first)
 				verbose (bool): if 'True', make diagnostic plots
 				overwrite (bool): if 'True', overwrite existing data files
+				binned (bool): if 'True', use binned spectra instead of individual spaxels
 		"""
 
 		print('Computing Balmer decrement...')
 
-		# Remove best-fit stellar template
-		if kinematics:
+		# Get data
+		if binned:
+			errors = self.stacked_errs
+			try:
+				data_norm = self.data_norm_bin
+				kinematics_wvl = self.kinematics_wvl_bin
+			except AttributeError:
+				data_norm = np.load('output/'+self.galaxyname+'/'+'data_norm_bin.npy')
+				kinematics_wvl = np.load('output/'+self.galaxyname+'/'+'kinwvl_bin.npy')
 
-			# Check if data already exists
+		else:
+			# Errors for individual spaxels
+			errors = np.sqrt(self.var[self.goodwvl, :, :])
+
 			try:
 				data_norm = self.data_norm
 				kinematics_wvl = self.kinematics_wvl
@@ -898,28 +899,73 @@ class Cube:
 				data_norm = np.load('output/'+self.galaxyname+'/'+'data_norm.npy')
 				kinematics_wvl = np.load('output/'+self.galaxyname+'/'+'kinwvl.npy')
 
-		else:
-			data_norm = self.data_cropped
-			kinematics_wvl = np.broadcast_to(self.wvl_cropped,self.data_cropped.T.shape).T
+			# Mask data
+			data_norm = np.ma.array(data_norm, mask=self.mask_cropped)
+			kinematics_wvl = np.ma.array(kinematics_wvl, mask=self.mask_cropped)
+			errors = np.ma.array(errors, mask=self.mask_cropped)
 
 		# Get Balmer line maps
-		resultHgamma = self.make_emline_map(data_norm, kinematics_wvl, 'Hgamma', np.sqrt(self.var[self.goodwvl, :, :]), overwrite=overwrite)
-		resultHbeta = self.make_emline_map(data_norm, kinematics_wvl, 'Hbeta', np.sqrt(self.var[self.goodwvl, :, :]), overwrite=overwrite)
+		resultHgamma = self.make_emline_map(data_norm, kinematics_wvl, errors, 'Hgamma', overwrite=overwrite, binned=binned)
+		resultHbeta = self.make_emline_map(data_norm, kinematics_wvl, errors, 'Hbeta', overwrite=overwrite, binned=binned)
 
-		# Compute relevant quantities
-		Hbeta = np.copy(resultHbeta[0])
-		Hgamma = np.copy(resultHgamma[0])
-		balmer = Hgamma/Hbeta
+		# Make array to hold E(B-V) iterations
+		Niter = 1000
+		ebv = np.zeros((Niter, self.data.shape[1], self.data.shape[2]))
+
+		# Compute relevant quantities using MC method to get errors
+		print('Computing E(B-V)...')
+		for i in range(Niter):
+
+			if binned:
+				# Make arrays to hold binned data
+				Hbeta = np.zeros(np.shape(self.data[0,:,:]))
+				Hgamma = np.zeros(np.shape(self.data[0,:,:]))
+
+				# Loop over all bins
+				for binID in range(len(self.bins)):
+
+					# Get all IDs in that bin
+					idx = np.where(self.binNum==self.bins[binID])[0]
+
+					# Get RA/Dec of all the pixels in a bin
+					xarray = np.asarray(-(self.x[idx]-self.ra0)/self.rad)
+					yarray = np.asarray((self.y[idx]-self.dec0)/self.decd)
+
+					# Loop again over all pixels in the bin and put the correct emline values in the array
+					for i in range(len(xarray)):
+						Hbeta[np.int(round(xarray[i])),np.int(round(yarray[i]))] = np.random.default_rng().normal(loc=resultHbeta[0][binID], scale=resultHbeta[1][binID])
+						Hgamma[np.int(round(xarray[i])),np.int(round(yarray[i]))] = np.random.default_rng().normal(loc=resultHgamma[0][binID], scale=resultHgamma[1][binID])
+
+			else:
+				Hbeta = np.random.default_rng().normal(loc=resultHbeta[0], scale=resultHbeta[1])
+				Hgamma = np.random.default_rng().normal(loc=resultHgamma[0], scale=resultHgamma[1])
+
+			# Compute Balmer decrement
+			balmer = Hgamma/Hbeta
+
+			# Compute E(B-V)
+			balmer0 = 0.468 # Intrinsic Hgamma/Hbeta ratio (assuming Case B recombination, T=10^4K, electron density 100/cm^3)
+			ebv[i,:,:] = np.log10(balmer/balmer0)/(-0.4*(k_lambda(wvldict['Hgamma'])-k_lambda(wvldict['Hbeta'])))
+
+		# Compute E(B-V) mean and errors
+		ebv_mean = np.nanmean(ebv, axis=0)
+		ebv_err = np.nanstd(ebv, axis=0)
 
 		if verbose:
 
-			#fig = plt.figure(figsize=(8,8))
-			#ax = plt.subplot(projection=self.wcs,slices=('x', 'y', 50))
-			#plt.imshow(resultHbeta[2], vmin=1)
-			#plt.colorbar()
-			#plt.savefig('figures/HbetaSNRtest.png', bbox_inches='tight')
-			#plt.show()
+			# Test error propagation
+			testidx = 41
+			testidy = 40
+			testbalmer = resultHgamma[0]/resultHbeta[0]
+			testebv = np.log10(testbalmer/balmer0)/(-0.4*(k_lambda(wvldict['Hgamma'])-k_lambda(wvldict['Hbeta'])))
+			plt.hist(ebv[:,testidx,testidy])
+			plt.axvline(testebv[testidx,testidy], color='r')
+			plt.axvline(ebv_mean[testidx,testidy], color='k', linestyle='--')
+			plt.axvspan(ebv_mean[testidx,testidy]-ebv_err[testidx,testidy],ebv_mean[testidx,testidy]+ebv_err[testidx,testidy], color='gray', alpha=0.25)
+			plt.show()
 
+			# Test Balmer line calculations
+			'''
 			fig = plt.figure(figsize=(15,6))
 
 			ax = fig.add_subplot(131) #,projection=self.wcs,slices=('x', 'y', 50))
@@ -938,23 +984,30 @@ class Cube:
 			fig.colorbar(im, ax=ax)
 
 			plt.show()
+			'''
 
-		print('Computing E(B-V)...')
+			# Test E(B-V)
+			fig = plt.figure(figsize=(15,6))
 
-		# Intrinsic Hgamma/Hbeta ratio (assuming Case B recombination, T=10^4K, electron density 100/cm^3)
-		balmer0 = 0.468
+			ax = fig.add_subplot(131) #,projection=self.wcs,slices=('x', 'y', 50))
+			ax.set_title(r'$E(B-V)$')
+			im = ax.imshow(testebv, cmap='viridis', interpolation='nearest', vmin=-1, vmax=2)
+			fig.colorbar(im, ax=ax)
 
-		# Compute E(B-V)
-		Ebv = np.log10(balmer/balmer0)/(-0.4*(k_lambda(wvldict['Hgamma'])-k_lambda(wvldict['Hbeta'])))
+			ax = fig.add_subplot(132) #,projection=self.wcs,slices=('x', 'y', 50))
+			ax.set_title(r'$E(B-V)$ (propagated)')
+			im = ax.imshow(ebv_mean, cmap='viridis', interpolation='nearest', vmin=-1, vmax=2)
+			fig.colorbar(im, ax=ax)
 
-		if verbose:
-			plt.figure(figsize=(8,8))
-			#plt.subplot(projection=self.wcs,slices=('x', 'y', 50))
-			plt.imshow(Ebv, cmap='viridis', interpolation='nearest', vmin=0, vmax=1)
-			plt.colorbar(label=r'$E(B-V)$')
+			ax = fig.add_subplot(133) #,projection=self.wcs,slices=('x', 'y', 50))
+			ax.set_title(r'$E(B-V)$ error')
+			im = ax.imshow(ebv_err, cmap='viridis', interpolation='nearest')
+			fig.colorbar(im, ax=ax)
+
 			plt.savefig('figures/EBVtest.png', bbox_inches='tight')
 			plt.show()
 
+		return
 		print('Applying reddening correction to all spaxels...')
 
 		# Initialize output array
@@ -963,20 +1016,20 @@ class Cube:
 		# Test how many spaxels have reasonable E(B-V) values
 		velmask = np.loadtxt('output/'+self.galaxyname+'/velmask.out')
 		print('Total spaxels in mask:', len(velmask[velmask>0]))
-		print('Spaxels with E(B-V)>0:', len(np.where((Ebv>0))[0]))
-		print('Spaxels with reasonable E(B-V):', len(np.where(np.logical_and(Ebv>0, Ebv<1))[0]))
+		print('Spaxels with E(B-V)>0:', len(np.where((ebv_mean>0))[0]))
+		print('Spaxels with reasonable E(B-V):', len(np.where(np.logical_and(ebv_mean>0, ebv_mean<1))[0]))
 
 		# Loop over all spaxels
 		for i in range(len(data_norm[0,:,0])):
 			for j in range(len(data_norm[0,0,:])):
-				if np.isfinite(Ebv[i,j]): #Ebv[i,j] > 0. and Ebv[i,j] < 1. and 
+				if np.isfinite(ebv_mean[i,j]): #Ebv[i,j] > 0. and Ebv[i,j] < 1. and 
 
 					# Get flux, wvl arrays for each spectrum
 					wvl = kinematics_wvl[:,i,j]
 					flux = data_norm[:,i,j]
 
 					# Apply reddening correction
-					Alam = k_lambda(wvl)*Ebv[i,j]
+					Alam = k_lambda(wvl)*ebv_mean[i,j]
 					self.data_dered[:,i,j] = flux/np.power(10.,(Alam/(-2.5)))
 
 		if verbose:
@@ -1022,12 +1075,12 @@ class Cube:
 
 def main():
 
-	c = Cube('reines65', folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/data/', verbose=False, wcscorr=[174.17801 - 174.1787083, 26.727126 - 26.7263583], z=0.0331, Av=0.0675)
+	c = Cube('reines65', folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/data/', verbose=False, wcscorr=[174.17801 - 174.1787083, 26.727126 - 26.7263583], z=0.0331, EBV=0.0217)
 	#c.testcovar(threshold=100, verbose=True)
 	c.binspaxels(verbose=False, targetsn=5., alpha=2.8)
-	c.stellarkinematics(verbose=True, overwrite=False, snr_mask=1)
+	#c.stellarkinematics(verbose=False, overwrite=True, snr_mask=1)
 	#c.plotkinematics(instdisp=False)
-	#c.reddening(verbose=True, overwrite=False)
+	c.reddening(verbose=True, overwrite=False, binned=True)
 
 	return
 
