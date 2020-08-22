@@ -29,6 +29,7 @@ from scipy import ndimage
 # Packages for emission line fitting
 from astropy.modeling import models, fitting
 from k_lambda import k_lambda
+from tqdm import tqdm
 
 # Wavelength dictionary for standard lines (from NIST when possible)
 wvldict = {'Hbeta':4861.35, 'Hgamma':4340.472, 'Hdelta':4101.734, 'Hepsilon':3970.075,
@@ -910,42 +911,52 @@ class Cube:
 
 		# Make array to hold E(B-V) iterations
 		Niter = 1000
-		ebv = np.zeros((Niter, self.data.shape[1], self.data.shape[2]))
+		if binned:
+			ebv = np.zeros((Niter, len(self.bins)))
+		else:
+			ebv = np.zeros((Niter, self.data.shape[1], self.data.shape[2]))
 
 		# Compute relevant quantities using MC method to get errors
 		print('Computing E(B-V)...')
-		for i in range(Niter):
+		for i in tqdm(range(Niter)):
 
-			if binned:
-				# Make arrays to hold binned data
-				Hbeta = np.zeros(np.shape(self.data[0,:,:]))
-				Hgamma = np.zeros(np.shape(self.data[0,:,:]))
-
-				# Loop over all bins
-				for binID in range(len(self.bins)):
-
-					# Get all IDs in that bin
-					idx = np.where(self.binNum==self.bins[binID])[0]
-
-					# Get RA/Dec of all the pixels in a bin
-					xarray = np.asarray(-(self.x[idx]-self.ra0)/self.rad)
-					yarray = np.asarray((self.y[idx]-self.dec0)/self.decd)
-
-					# Loop again over all pixels in the bin and put the correct emline values in the array
-					for i in range(len(xarray)):
-						Hbeta[np.int(round(xarray[i])),np.int(round(yarray[i]))] = np.random.default_rng().normal(loc=resultHbeta[0][binID], scale=resultHbeta[1][binID])
-						Hgamma[np.int(round(xarray[i])),np.int(round(yarray[i]))] = np.random.default_rng().normal(loc=resultHgamma[0][binID], scale=resultHgamma[1][binID])
-
-			else:
-				Hbeta = np.random.default_rng().normal(loc=resultHbeta[0], scale=resultHbeta[1])
-				Hgamma = np.random.default_rng().normal(loc=resultHgamma[0], scale=resultHgamma[1])
+			Hbeta = np.random.default_rng().normal(loc=resultHbeta[0], scale=resultHbeta[1])
+			Hgamma = np.random.default_rng().normal(loc=resultHgamma[0], scale=resultHgamma[1])
 
 			# Compute Balmer decrement
 			balmer = Hgamma/Hbeta
 
 			# Compute E(B-V)
 			balmer0 = 0.468 # Intrinsic Hgamma/Hbeta ratio (assuming Case B recombination, T=10^4K, electron density 100/cm^3)
-			ebv[i,:,:] = np.log10(balmer/balmer0)/(-0.4*(k_lambda(wvldict['Hgamma'])-k_lambda(wvldict['Hbeta'])))
+			if binned:
+				ebv[i,:] = np.log10(balmer/balmer0)/(-0.4*(k_lambda(wvldict['Hgamma'])-k_lambda(wvldict['Hbeta'])))
+			else:
+				ebv[i,:,:] = np.log10(balmer/balmer0)/(-0.4*(k_lambda(wvldict['Hgamma'])-k_lambda(wvldict['Hbeta'])))
+
+		if binned:
+
+			# Make arrays to hold binned data
+			ebv_unbinned = np.zeros((Niter, self.data.shape[1], self.data.shape[2]))
+			Hbeta_unbinned = np.zeros(np.shape(self.data[0,:,:]))
+			Hgamma_unbinned = np.zeros(np.shape(self.data[0,:,:]))
+
+			# Loop over all bins
+			for binID in range(len(self.bins)):
+
+				# Get all IDs in that bin
+				idx = np.where(self.binNum==self.bins[binID])[0]
+
+				# Get RA/Dec of all the pixels in a bin
+				xarray = np.asarray(-(self.x[idx]-self.ra0)/self.rad)
+				yarray = np.asarray((self.y[idx]-self.dec0)/self.decd)
+
+				# Loop again over all pixels in the bin and put the correct emline values in the array
+				for i in range(len(xarray)):
+					Hbeta_unbinned[np.int(round(xarray[i])),np.int(round(yarray[i]))] = resultHbeta[0][binID]
+					Hgamma_unbinned[np.int(round(xarray[i])),np.int(round(yarray[i]))] = resultHgamma[0][binID]
+					ebv_unbinned[:, np.int(round(xarray[i])),np.int(round(yarray[i]))] = ebv[:, binID]
+
+			ebv = ebv_unbinned
 
 		# Compute E(B-V) mean and errors
 		ebv_mean = np.nanmean(ebv, axis=0)
@@ -956,8 +967,14 @@ class Cube:
 			# Test error propagation
 			testidx = 41
 			testidy = 40
-			testbalmer = resultHgamma[0]/resultHbeta[0]
+			if binned:
+				testbalmer = Hgamma_unbinned/Hbeta_unbinned
+			else:
+				testbalmer = resultHgamma[0]/resultHbeta[0]
 			testebv = np.log10(testbalmer/balmer0)/(-0.4*(k_lambda(wvldict['Hgamma'])-k_lambda(wvldict['Hbeta'])))
+
+			print(np.shape(Hbeta))
+			print(np.shape(testebv))
 			plt.hist(ebv[:,testidx,testidy])
 			plt.axvline(testebv[testidx,testidy], color='r')
 			plt.axvline(ebv_mean[testidx,testidy], color='k', linestyle='--')
@@ -1080,7 +1097,7 @@ def main():
 	c.binspaxels(verbose=False, targetsn=5., alpha=2.8)
 	#c.stellarkinematics(verbose=False, overwrite=True, snr_mask=1)
 	#c.plotkinematics(instdisp=False)
-	c.reddening(verbose=True, overwrite=False, binned=True)
+	c.reddening(verbose=True, overwrite=False, binned=False)
 
 	return
 
