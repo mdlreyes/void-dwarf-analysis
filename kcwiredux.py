@@ -306,6 +306,9 @@ class Cube:
 		if verbose:
 			stacked_data = np.zeros(np.shape(self.data[self.goodwvl,:,:])) # For plotting binned image
 
+		# Make cube to hold bin ID number for each pixel
+		self.binIDarray = np.zeros(np.shape(self.data[0,:,:]))
+
 		# Loop over all bins
 		for binID in range(len(self.bins)):
 
@@ -323,6 +326,9 @@ class Cube:
 				binned_spec.append(self.data[self.goodwvl,np.int(round(xarray[i])),np.int(round(yarray[i]))])
 				binned_err.append(self.var[self.goodwvl,np.int(round(xarray[i])),np.int(round(yarray[i]))])
 
+				# Also record the bin ID for each pixel
+				self.binIDarray[np.int(round(xarray[i])),np.int(round(yarray[i]))] = binID
+
 			# Loop again over all pixels in the bin and put the new mean spectra in the list
 			if verbose:
 				if self.sn[binID] > 1.:
@@ -331,6 +337,10 @@ class Cube:
 
 			self.stacked_spec[binID] = np.ma.mean(binned_spec, axis=0)
 			self.stacked_errs[binID] = np.ma.mean(binned_err, axis=0)
+
+		# For testing purposes, save arrays of bin IDs and bin errors
+		np.save('output/'+self.galaxyname+'/binIDarray', self.binIDarray)
+		np.save('output/'+self.galaxyname+'/binerrs', self.stacked_errs)
 
 		# Plot test figures
 		if verbose:
@@ -484,9 +494,7 @@ class Cube:
 			print('Doing stellar kinematics fit...')
 
 			# Loop over all bins
-			for binID in range(len(self.bins)):
-
-				print('Fitting bin %s/%s' % (binID, len(self.bins)))
+			for binID in tqdm(range(len(self.bins))):
 
 				# Do stellar kinematic fit
 				params, fitwvl, fit = self.ppxf_fit(self.stacked_spec[binID], self.stacked_errs[binID], verbose=False)
@@ -838,6 +846,11 @@ class Cube:
 						if signal/noise > 0.:
 							snr[i,j] = signal/noise
 
+			fig, ax = plt.figure()
+			im = ax.imshow(snr, cmap='viridis', interpolation='nearest')
+			fig.colorbar(im, ax=ax)
+			plt.show()
+
 		else:
 			# Loop over all bins
 			for binID in range(len(self.bins)):
@@ -1094,10 +1107,10 @@ def main():
 
 	c = Cube('reines65', folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/data/', verbose=False, wcscorr=[174.17801 - 174.1787083, 26.727126 - 26.7263583], z=0.0331, EBV=0.0217)
 	#c.testcovar(threshold=100, verbose=True)
-	c.binspaxels(verbose=False, targetsn=5., alpha=2.8)
-	#c.stellarkinematics(verbose=False, overwrite=True, snr_mask=1)
+	c.binspaxels(verbose=False, targetsn=6, alpha=2.8)
+	c.stellarkinematics(verbose=False, overwrite=True, snr_mask=1)
 	#c.plotkinematics(instdisp=False)
-	c.reddening(verbose=True, overwrite=False, binned=False)
+	c.reddening(verbose=True, overwrite=True, binned=True)
 
 	return
 
