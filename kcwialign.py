@@ -180,7 +180,7 @@ def stack(listfile, mode, radec, box, outfile=None, plot=True, fakes=True):
 
     return
 
-def getdata(filename='', maskfile=None, z=0., plot=True):
+def getdata(filename='', maskfile=None, z=0., plot=True, maskout=True):
     """Get data from intensity and variance cubes
     
     Args:
@@ -188,6 +188,7 @@ def getdata(filename='', maskfile=None, z=0., plot=True):
         maskfile (str): Full name of mask file
         z (float): Redshift (doesn't make a difference for synthetic cubes)
         plot (bool): If 'True', plot white light image
+        maskout (bool): If 'True', output a mask based on where data and var are 0
     """
 
     # Main intensity cube
@@ -210,6 +211,13 @@ def getdata(filename='', maskfile=None, z=0., plot=True):
         mask[badidx] = True
         masked_data = np.ma.array(data, mask=mask)
         masked_var = np.ma.array(var, mask=mask)
+
+        if maskout:
+            with fits.open(filename+'_icubes.fits') as ihdu:
+                # Write mask to FITS
+                ihdu[0].data = mask
+                print('Writing to '+filename+'_mcubes.fits')
+                ihdu.writeto(filename+'_mcubes.fits', overwrite=True) 
 
     # Mask the data and error cubes
     masked_data = np.ma.array(data, mask=mask)
@@ -403,6 +411,6 @@ def estimatecovar(filename, maskfile=None, plot=True, n_w=20, bin_grid=[1,2,3,4,
 
 if __name__ == "__main__":
 
-    stack('reines65', 'xcor', radec=(174.1787932, 26.72628063), box=5)
-    #getdata('reines65', plot=True)  # Make sure stacking worked
-    estimatecovar('reines65_test', plot=False)
+    #stack('reines65', 'xcor', radec=(174.1787932, 26.72628063), box=5)
+    getdata('reines65', plot=True, maskout=True)  # Make sure stacking worked
+    #estimatecovar('reines65_test', plot=False)

@@ -72,6 +72,7 @@ class Cube:
 		print('Initializing cube...')
 
 		# Define galaxy name
+		self.folder = folder
 		self.galaxyname = filename
 
 		# Make output folders
@@ -159,73 +160,15 @@ class Cube:
 			plt.fill_between(self.wvl_zcorr,self.data[:,idx,idy]-testerror,self.data[:,idx,idy]+testerror,facecolor='C0',alpha=0.5,edgecolor='None')
 			plt.show()
 
-	def testcovar(self, threshold=60, savedata=False, verbose=False):
-		""" Code to run covariance curve code and set attribute alpha.
-
-			Args:
-				threshold (int): Threshold bin size
-				savedata (bool): If 'True', save bin sizes and noise ratios into text files
-				verbose (bool): If 'True', make diagnostic plots
-		"""
-
-		print('Doing covariance test...')
-
-		# Open important packages
-		from cwitools import reduction, modeling
-		import pandas as pd
-		from scipy.optimize import curve_fit
-
-		# Run covariance fitting algorithm by Donal & Yuguang
-		hdu, param, bin_sizes, noise_ratios = reduction.fit_covar_xy(self.hdu, self.var, self.mask, return_all=True, plot=True) #, xybins=np.array([1,3,5,7,9])) #, mask_neb=self.z)
-
-		# Print output plots/results
-		if verbose:
-			plt.tight_layout()
-			plt.show()
-
-		print('Initial alpha: %s \nInitial threshold: %s' % (param[0], param[2]))
-		self.alpha = param[0]
-
-		# If needed, save the output data
-		if savedata:
-			np.savetxt('output/'+self.galaxyname+'/binsizes.out', bin_sizes)
-			np.savetxt('output/'+self.galaxyname+'/noiseratios.out', noise_ratios)
-
-		# Do separate fit if want to set a specific threshold value
-		if threshold > 60:
-
-			# Define functional form from Husemann et al. (2013)
-			def beta(N, alpha):
-				res = 1. + alpha*np.log(N)
-				res[N > threshold] = 1. + alpha*np.log(threshold)
-				return res
-
-			# Do fitting
-			popt, pcov = curve_fit(beta, bin_sizes, noise_ratios)
-			print('alpha = ', popt[0])
-			self.alpha = popt[0]
-
-			# Make plot
-			if verbose:
-				plt.plot(bin_sizes, noise_ratios, 'ko', alpha=0.2)
-				xplot = np.linspace(0,360,100)
-				plt.plot(xplot, beta(xplot,popt[0]), 'r-')
-				plt.plot(xplot, 1. + 1.*np.log(xplot), 'b-')
-				plt.axvline(100, color='b', linestyle='--')
-				plt.xlabel('Bin size', fontsize=16)
-				plt.ylabel(r'$n_{\mathrm{measured}}/n_{\mathrm{no covar}}$', fontsize=16)
-				#plt.savefig('figures/covtest2_fluxed.png', bbox_inches='tight')
-				plt.show()
-
-		return
-
-	def binspaxels(self, alpha=1., verbose=False, targetsn=10.):
+	def binspaxels(self, params=[1., 1., 60.], verbose=False, targetsn=10., emline=None):
 		""" Bin spaxels spatially to increase S/N
 
 			Args:
-				alpha (:obj: float): alpha value to be used if testcovar function is not run
+				params (float list): parameters [alpha, norm, thresh] to use for covar correction
 				verbose (bool): if 'True', make test plots
 				targetsn (float): target value of S/N
+				emline (str): compute emission line S/N of input line; 
+							if None (default), compute continuum S/N
 		"""
 
 		print('Binning cube...')
@@ -235,24 +178,60 @@ class Cube:
 		ysize = np.shape(self.data[0,:,:])[0]
 
 		# Compute signal/noise
-		signal = np.mean(self.data[self.wvlsection,:,:], axis=0)
-		
-		# Compute noise as detrended standard deviation
-		#noise = np.sqrt(np.ma.mean(self.var[wvlsection,:,:], axis=0))
-		noise = np.zeros(np.shape(signal))
-		for i in range(ysize):
-			for j in range(xsize):
-				linfit = np.polyfit(self.wvl_zcorr[self.wvlsection],self.data[self.wvlsection,i,j],deg=1)
-				poly = np.poly1d(linfit)
-				noise[i,j] = np.std(self.data[self.wvlsection,i,j] - np.asarray(poly(self.wvl_zcorr[self.wvlsection]))**2.)
+		if emline is None:
+			signal = np.mean(self.data[self.wvlsection,:,:], axis=0)
+			
+			# Compute noise as detrended standard deviation
+			noise = np.zeros(np.shape(signal))
+			for i in range(ysize):
+				for j in range(xsize):
+					linfit = np.polyfit(self.wvl_zcorr[self.wvlsection],self.data[self.wvlsection,i,j],deg=1)
+					poly = np.poly1d(linfit)
+					noise[i,j] = np.std(self.data[self.wvlsection,i,j] - np.asarray(poly(self.wvl_zcorr[self.wvlsection]))**2.)
 
-		# Define S/N
-		sntest = signal/noise
-		if verbose:
-			plt.imshow(sntest)
-			plt.colorbar()
-			plt.show()
-		np.save('output/'+self.galaxyname+'/contsnr', np.ma.getdata(sntest))
+			# Define S/N
+			sntest = signal/noise
+			if verbose:
+				plt.imshow(sntest)
+				plt.colorbar()
+				plt.show()
+			np.save('output/'+self.galaxyname+'/contsnr', np.ma.getdata(sntest))
+		
+		else:
+			# Open cubed datafile
+			counts = fits.open(self.folder + self.galaxyname + '_icubed.fits')[0].data
+			counts = np.ma.array(counts, mask=self.mask)
+
+			# Get central line wavelength
+			line = wvldict[emline]
+
+			# TODO: fit line?
+
+			# Define wavelength ranges
+			emidx = np.where((self.wvl_zcorr > (line-3*stddev)) & (self.wvl_zcorr < (line+3*stddev)))[0]
+			cont1idx = np.where((self.wvl_zcorr < (line-3*stddev)))[0]
+			cont2idx = np.where((self.wvl_zcorr > (line+3*stddev)))[0]
+
+			# Compute fluxes
+			for i in range(ysize):
+				for j in range(xsize):
+					emflux = self.data[emidx, i, j]
+					contflux1 = self.data[cont1idx, i, j]
+					contflux2 = self.data[cont2idx, i, j]
+					
+					signal = np.sum(emflux - np.mean(np.hstack((contflux1,contflux2)))) / np.sqrt(len(emflux))
+					noisecont = (np.std(contflux1) + np.std(contflux2)) / 2. # Continuum noise
+					pois = np.random.poisson(size=len(emflux))
+					noisepois = np.std(pois/np.sum(pois)*np.sqrt(np.abs(emflux))) # Poisson noise
+					noise = np.sqrt(noisecont**2. + noisepois**2.)
+
+			# Define S/N
+			sntest = signal/noise
+			if verbose:
+				plt.imshow(sntest)
+				plt.colorbar()
+				plt.show()
+			np.save('output/'+self.galaxyname+'/'+emline+'snr', np.ma.getdata(sntest))
 
 		# Prep data for binning by making lists that vorbin can read
 		x = []
@@ -276,18 +255,18 @@ class Cube:
 		s = np.asarray(s)
 		n = np.asarray(n)
 
-		# Default to using class attribute alpha unless it doesn't exist, then use function argument
-		try:
-			a = self.alpha
-		except AttributeError:
-			a = alpha
-		print('Using alpha: ', a)
-
 		# Define S/N function
 		def snfunc(index, signal, noise):
 			sn = np.sum(signal[index])/np.sqrt(np.sum(noise[index]**2))
-			sn /= 1 + alpha*np.log(index.size)
-			return sn
+
+			# Apply covariance correction
+			alpha, norm, threshold = params
+			if index.size >= threshold:
+				correction = norm * (1 + alpha * np.log(threshold))
+			else:
+				correction = norm * (1 + alpha * np.log(index.size))
+
+			return sn/correction
 
 		# Do actual binning
 		self.binNum, xNode, yNode, xBar, yBar, self.sn, nPixels, scale = voronoi_2d_binning(self.x, self.y, s, n, targetsn, sn_func=snfunc, plot=1, quiet=1)
@@ -561,8 +540,8 @@ class Cube:
 			print('Normalizing data by best-fit stellar template for each spaxel...')
 
 			# Define sizes of array
-			xsize = np.shape(self.data[0,:,:])[1]
-			ysize = np.shape(self.data[0,:,:])[0]
+			xsize = np.shape(self.data[0,:,:])[0]
+			ysize = np.shape(self.data[0,:,:])[1]
 
 			# Prep array for output
 			self.data_norm = np.zeros(np.shape(self.data_cropped))
@@ -710,8 +689,8 @@ class Cube:
 
 			return copy
 
-		plot(vel, error=vel_err, nan=False, upperlim=100, lowerlim=-100, velshift=-160, cmap='RdBu_r', title='Velocity (km/s)', mask=velmask)
-		plot(veldisp, error=veldisp_err, nan=False, upperlim=300, title=r'$\sigma$ (km/s)', mask=velmask)
+		plot(vel, error=vel_err, nan=False, velshift=-80, upperlim=100, lowerlim=-100, cmap='coolwarm', title='Velocity (km/s)', mask=velmask)
+		#plot(veldisp, error=veldisp_err, nan=False, title=r'$\sigma$ (km/s)', mask=velmask)
 		#plot(vel_err, nan=False, cmap='RdBu', title='Velocity error (km/s)') #mask=velmask, 
 		#plot(veldisp_err, nan=False, upperlim=200, title=r'$\sigma$ error (km/s)') #mask=velmask, 
 
@@ -846,7 +825,7 @@ class Cube:
 						if signal/noise > 0.:
 							snr[i,j] = signal/noise
 
-			fig, ax = plt.figure()
+			fig, ax = plt.subplots()
 			im = ax.imshow(snr, cmap='viridis', interpolation='nearest')
 			fig.colorbar(im, ax=ax)
 			plt.show()
@@ -1021,12 +1000,12 @@ class Cube:
 
 			ax = fig.add_subplot(131) #,projection=self.wcs,slices=('x', 'y', 50))
 			ax.set_title(r'$E(B-V)$')
-			im = ax.imshow(testebv, cmap='viridis', interpolation='nearest', vmin=-1, vmax=2)
+			im = ax.imshow(testebv, cmap='viridis', interpolation='nearest')
 			fig.colorbar(im, ax=ax)
 
 			ax = fig.add_subplot(132) #,projection=self.wcs,slices=('x', 'y', 50))
 			ax.set_title(r'$E(B-V)$ (propagated)')
-			im = ax.imshow(ebv_mean, cmap='viridis', interpolation='nearest', vmin=-1, vmax=2)
+			im = ax.imshow(ebv_mean, cmap='viridis', interpolation='nearest')
 			fig.colorbar(im, ax=ax)
 
 			ax = fig.add_subplot(133) #,projection=self.wcs,slices=('x', 'y', 50))
@@ -1105,12 +1084,11 @@ class Cube:
 
 def main():
 
-	c = Cube('reines65', folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/data/', verbose=False, wcscorr=[174.17801 - 174.1787083, 26.727126 - 26.7263583], z=0.0331, EBV=0.0217)
-	#c.testcovar(threshold=100, verbose=True)
-	c.binspaxels(verbose=False, targetsn=6, alpha=2.8)
-	c.stellarkinematics(verbose=False, overwrite=True, snr_mask=1)
+	c = Cube('reines65', folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/analysis/', verbose=False, wcscorr=[174.17801 - 174.1787083, 26.727126 - 26.7263583], z=0.0331, EBV=0.0217)
+	c.binspaxels(verbose=False, targetsn=10, params=[0.11038457, 1.6406684, 75.89559487], emline=None)
+	#c.stellarkinematics(verbose=False, overwrite=True, snr_mask=1)
 	#c.plotkinematics(instdisp=False)
-	c.reddening(verbose=True, overwrite=True, binned=True)
+	#c.reddening(verbose=True, overwrite=True, binned=True)
 
 	return
 
