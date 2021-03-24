@@ -405,6 +405,6 @@ def estimatecovar(filename, maskfile=None, plot=True, n_w=20, bin_grid=[1,2,3,4,
 
 if __name__ == "__main__":
 
-    #stack('reines65', 'xcor', radec=(174.1787932, 26.72628063), box=5, listdir='lists/')
+    stack('reines65', 'xcor', radec=(174.1787932, 26.72628063), box=5, listdir='lists/')
     #getdata('stackedcubes/reines65', plot=True, maskout=True)  # Make sure stacking worked, make final mask
-    estimatecovar('stackedcubes/reines65_test', plot=True)
+    #estimatecovar('stackedcubes/reines65_test', plot=True)
