@@ -54,26 +54,27 @@ def makefake(filename):
 
     return
 
-def stack(listfile, mode, radec, box, outfile=None, plot=True, fakes=True):
+def stack(galaxyname, mode, radec, box, outfile=None, plot=True, fakes=True, listdir=''):
     """Aligns and stacks datacubes.
 
         Args:
-            listfile (str): Base filename of ".list" file
+            galaxyname (str): Base filename
             mode (str): Mode to do spatial correlation ('src_fit' or 'xcor')
             radec (float tuple): RA and Dec of fitting box for alignment
             box (int): Size of fitting box 
             outfile (str): Filename to save output stacked file 
-                        (if None, assume same name as listfile)
+                        (if None, assume same name as galaxyname)
             plot (bool): If 'True', plot aligned cubes to check them
             fakes (bool): If 'True', also run cropping/stacking on fake cubes
                         (cubes with unity flux, Gaussian error)
+            listdir (str): Folder where '.list' and '.wcs' files are stored
 	"""
 
     # Make fake datacubes
     if fakes:
 
         #Parse cube list
-        cdict = utils.parse_cubelist(listfile+'.list')
+        cdict = utils.parse_cubelist(listdir+galaxyname+'.list')
 
         #Load input files
         in_files = utils.find_files(cdict["ID_LIST"], cdict["DATA_DIRECTORY"], 'icubes.fits', depth=cdict["SEARCH_DEPTH"])
@@ -88,16 +89,17 @@ def stack(listfile, mode, radec, box, outfile=None, plot=True, fakes=True):
     if fakes:
         ctype += ["icubes.test.fits", "vcubes.test.fits"]
     cwi_crop(
-        listfile+".list",
+        listdir+galaxyname+".list",
         ctype=ctype,
         xcrop=(5, 28),
-        ycrop=(15, 80)
+        ycrop=(15, 80),
+        outdir=outdir
     )
 
     # Measure the coordinate system to create a 'WCS correction table'
     print('Measuring WCS correction')
     cwi_measure_wcs(
-        listfile+".list",
+        listdir+galaxyname+".list",
         ctype="icubes.c.fits",
         xymode="xcor",
         radec=(174.1787932, 26.72628063),
@@ -106,25 +108,17 @@ def stack(listfile, mode, radec, box, outfile=None, plot=True, fakes=True):
         plot=False
     )
 
-    '''
-    if plot:
-        f = fits.open('test/kb200122_00079_icubes.fits')
-        plt.subplot(projection=WCS(f[0].header),slices=('x', 'y', 50))
-        plt.imshow(np.sum(f[0].data,axis=0))
-        plt.show()
-    '''
-
     # Apply the new WCS table to the cropped data cubes
     print('Applying WCS correction')
     ctype=["icubes.c.fits", "mcubes.c.fits", "vcubes.c.fits"]
     cwi_apply_wcs(
-        listfile+".wcs",
+        listdir+galaxyname+".wcs",
         ctypes=ctype
     )
     if fakes:
         ctype = ["icubes.test.c.fits", "vcubes.test.c.fits"]
         cwi_apply_wcs(
-            listfile+".wcs",
+            listdir+galaxyname+".wcs",
             ctypes=ctype
         )
 
@@ -161,16 +155,16 @@ def stack(listfile, mode, radec, box, outfile=None, plot=True, fakes=True):
         plt.show()
 
     if outfile is None:
-        outfile=listfile
+        outfile = 'stackedcubes/'+galaxyname
 
     # Coadd the WCS-corrected data cubes
     print('Coadding datacubes')
-    cwi_coadd(listfile+".list", ctype='icubes.c.wc.fits', masks='mcubes.c.wc.fits', var='vcubes.c.wc.fits', 
+    cwi_coadd(listdir+galaxyname+".list", ctype='icubes.c.wc.fits', masks='mcubes.c.wc.fits', var='vcubes.c.wc.fits', 
         pa=None, px_thresh=0.5, exp_thresh=0.1, verbose=False, drizzle=0.7, out=outfile+".fits")
 
     # Coadd the WCS-corrected fake data cubes
     print('Coadding fake datacubes')
-    cwi_coadd(listfile+".list", ctype='icubes.test.c.wc.fits', masks='mcubes.c.wc.fits', var='vcubes.test.c.wc.fits', 
+    cwi_coadd(listdir+galaxyname+".list", ctype='icubes.test.c.wc.fits', masks='mcubes.c.wc.fits', var='vcubes.test.c.wc.fits', 
         pa=None, px_thresh=0.5, exp_thresh=0.1, verbose=False, drizzle=0.7, out=outfile+".test.fits")
 
     os.rename(outfile+".fits", outfile+"_icubes.fits")
@@ -278,7 +272,7 @@ def estimatecovar(filename, maskfile=None, plot=True, n_w=20, bin_grid=[1,2,3,4,
     """
 
     # Open files
-    data, var, mask, wcs, wvl_zcorr = getdata(filename, maskfile=maskfile, plot=True)
+    data, var, mask, wcs, wvl_zcorr = getdata(filename, maskfile=maskfile, plot=False)
 
     # Apply mask
     var[mask != 0] = 0
@@ -411,6 +405,6 @@ def estimatecovar(filename, maskfile=None, plot=True, n_w=20, bin_grid=[1,2,3,4,
 
 if __name__ == "__main__":
 
-    #stack('reines65', 'xcor', radec=(174.1787932, 26.72628063), box=5)
-    getdata('reines65', plot=True, maskout=True)  # Make sure stacking worked
-    #estimatecovar('reines65_test', plot=False)
+    #stack('reines65', 'xcor', radec=(174.1787932, 26.72628063), box=5, listdir='lists/')
+    #getdata('stackedcubes/reines65', plot=True, maskout=True)  # Make sure stacking worked, make final mask
+    estimatecovar('stackedcubes/reines65_test', plot=True)
