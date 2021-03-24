@@ -92,8 +92,7 @@ def stack(galaxyname, mode, radec, box, outfile=None, plot=True, fakes=True, lis
         listdir+galaxyname+".list",
         ctype=ctype,
         xcrop=(5, 28),
-        ycrop=(15, 80),
-        outdir=outdir
+        ycrop=(15, 80)
     )
 
     # Measure the coordinate system to create a 'WCS correction table'
