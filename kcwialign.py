@@ -54,7 +54,7 @@ def makefake(filename):
 
     return
 
-def stack(galaxyname, mode, radec, box, outfile=None, plot=True, fakes=True, listdir=''):
+def stack(galaxyname, mode, radec, box, outfile=None, plot=True, fakes=True, cubed=False, listdir=''):
     """Aligns and stacks datacubes.
 
         Args:
@@ -67,6 +67,7 @@ def stack(galaxyname, mode, radec, box, outfile=None, plot=True, fakes=True, lis
             plot (bool): If 'True', plot aligned cubes to check them
             fakes (bool): If 'True', also run cropping/stacking on fake cubes
                         (cubes with unity flux, Gaussian error)
+            cubed (bool): If 'True', also run cropping/stacking on *cubed.fits
             listdir (str): Folder where '.list' and '.wcs' files are stored
 	"""
 
@@ -88,6 +89,8 @@ def stack(galaxyname, mode, radec, box, outfile=None, plot=True, fakes=True, lis
     ctype=["icubes.fits", "mcubes.fits", "vcubes.fits", "ocubes.fits"]
     if fakes:
         ctype += ["icubes.test.fits", "vcubes.test.fits"]
+    if cubed:
+        ctype += ["icubed.fits", "mcubed.fits", "vcubed.fits", "ocubed.fits"]
     cwi_crop(
         listdir+galaxyname+".list",
         ctype=ctype,
@@ -116,6 +119,12 @@ def stack(galaxyname, mode, radec, box, outfile=None, plot=True, fakes=True, lis
     )
     if fakes:
         ctype = ["icubes.test.c.fits", "vcubes.test.c.fits"]
+        cwi_apply_wcs(
+            listdir+galaxyname+".wcs",
+            ctypes=ctype
+        )
+    if cubed:
+        ctype = ["icubed.test.c.fits", "vcubed.test.c.fits"]
         cwi_apply_wcs(
             listdir+galaxyname+".wcs",
             ctypes=ctype
@@ -166,10 +175,18 @@ def stack(galaxyname, mode, radec, box, outfile=None, plot=True, fakes=True, lis
     cwi_coadd(listdir+galaxyname+".list", ctype='icubes.test.c.wc.fits', masks='mcubes.c.wc.fits', var='vcubes.test.c.wc.fits', 
         pa=None, px_thresh=0.5, exp_thresh=0.1, verbose=False, drizzle=0.7, out=outfile+".test.fits")
 
+    # Coadd the WCS-corrected *cubed.fits files
+    print('Coadding *cubed.fits')
+    cwi_coadd(listdir+galaxyname+".list", ctype='icubed.c.wc.fits', masks='mcubes.c.wc.fits', var='vcubed.c.wc.fits', 
+        pa=None, px_thresh=0.5, exp_thresh=0.1, verbose=False, drizzle=0.7, out=outfile+".cubed.fits")
+
+    # Rename files
     os.rename(outfile+".fits", outfile+"_icubes.fits")
     os.rename(outfile+".var.fits", outfile+'_vcubes.fits')
     os.rename(outfile+".test.fits", outfile+"_test_icubes.fits")
     os.rename(outfile+".test.var.fits", outfile+"_test_vcubes.fits")
+    os.rename(outfile+".cubed.fits", outfile+"_icubed.fits")
+    os.rename(outfile+".cubed.var.fits", outfile+"_vcubed.fits")
 
     return
 
@@ -404,6 +421,6 @@ def estimatecovar(filename, maskfile=None, plot=True, n_w=20, bin_grid=[1,2,3,4,
 
 if __name__ == "__main__":
 
-    stack('reines65', 'xcor', radec=(174.1787932, 26.72628063), box=5, listdir='lists/')
+    stack('reines65', 'xcor', radec=(174.1787932, 26.72628063), box=5, listdir='lists/', cubed=True)
     #getdata('stackedcubes/reines65', plot=True, maskout=True)  # Make sure stacking worked, make final mask
     #estimatecovar('stackedcubes/reines65_test', plot=True)
