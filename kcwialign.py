@@ -124,7 +124,7 @@ def stack(galaxyname, mode, radec, box, outfile=None, plot=True, fakes=True, cub
             ctypes=ctype
         )
     if cubed:
-        ctype = ["icubed.test.c.fits", "vcubed.test.c.fits"]
+        ctype = ["icubed.c.fits", "vcubed.c.fits"]
         cwi_apply_wcs(
             listdir+galaxyname+".wcs",
             ctypes=ctype
