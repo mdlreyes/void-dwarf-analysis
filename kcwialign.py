@@ -169,24 +169,24 @@ def stack(galaxyname, mode, radec, box, outfile=None, plot=True, fakes=True, cub
     print('Coadding datacubes')
     cwi_coadd(listdir+galaxyname+".list", ctype='icubes.c.wc.fits', masks='mcubes.c.wc.fits', var='vcubes.c.wc.fits', 
         pa=None, px_thresh=0.5, exp_thresh=0.1, verbose=False, drizzle=0.7, out=outfile+".fits")
-
-    # Coadd the WCS-corrected fake data cubes
-    print('Coadding fake datacubes')
-    cwi_coadd(listdir+galaxyname+".list", ctype='icubes.test.c.wc.fits', masks='mcubes.c.wc.fits', var='vcubes.test.c.wc.fits', 
-        pa=None, px_thresh=0.5, exp_thresh=0.1, verbose=False, drizzle=0.7, out=outfile+".test.fits")
-
-    # Coadd the WCS-corrected *cubed.fits files
-    print('Coadding *cubed.fits')
-    cwi_coadd(listdir+galaxyname+".list", ctype='icubed.c.wc.fits', masks='mcubes.c.wc.fits', var='vcubed.c.wc.fits', 
-        pa=None, px_thresh=0.5, exp_thresh=0.1, verbose=False, drizzle=0.7, out=outfile+".cubed.fits")
-
-    # Rename files
     os.rename(outfile+".fits", outfile+"_icubes.fits")
     os.rename(outfile+".var.fits", outfile+'_vcubes.fits')
-    os.rename(outfile+".test.fits", outfile+"_test_icubes.fits")
-    os.rename(outfile+".test.var.fits", outfile+"_test_vcubes.fits")
-    os.rename(outfile+".cubed.fits", outfile+"_icubed.fits")
-    os.rename(outfile+".cubed.var.fits", outfile+"_vcubed.fits")
+
+    # Coadd the WCS-corrected fake data cubes
+    if fakes:
+        print('Coadding fake datacubes')
+        cwi_coadd(listdir+galaxyname+".list", ctype='icubes.test.c.wc.fits', masks='mcubes.c.wc.fits', var='vcubes.test.c.wc.fits', 
+            pa=None, px_thresh=0.5, exp_thresh=0.1, verbose=False, drizzle=0.7, out=outfile+".test.fits")
+        os.rename(outfile+".test.fits", outfile+"_test_icubes.fits")
+        os.rename(outfile+".test.var.fits", outfile+"_test_vcubes.fits")
+
+    # Coadd the WCS-corrected *cubed.fits files
+    if cubed:
+        print('Coadding *cubed.fits')
+        cwi_coadd(listdir+galaxyname+".list", ctype='icubed.c.wc.fits', masks='mcubes.c.wc.fits', var='vcubed.c.wc.fits', 
+            pa=None, px_thresh=0.5, exp_thresh=0.1, verbose=False, drizzle=0.7, out=outfile+".cubed.fits")
+        os.rename(outfile+".cubed.fits", outfile+"_icubed.fits")
+        os.rename(outfile+".cubed.var.fits", outfile+"_vcubed.fits")
 
     return
 
