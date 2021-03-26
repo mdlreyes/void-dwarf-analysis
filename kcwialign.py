@@ -107,7 +107,7 @@ def stack(galaxyname, mode, radec, box, outfile=None, plot=True, fakes=True, cub
         radec=radec,
         box=5,
         zmode="none",
-        plot=True
+        plot=False
     )
 
     # Apply the new WCS table to the cropped data cubes
