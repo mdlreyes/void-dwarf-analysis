@@ -103,7 +103,7 @@ def stack(galaxyname, mode, radec, box, outfile=None, plot=True, fakes=True, cub
     cwi_measure_wcs(
         listdir+galaxyname+".list",
         ctype="icubes.c.fits",
-        xymode="xcor",
+        xymode=mode,
         radec=(174.1787932, 26.72628063),
         box=5,
         zmode="none",
