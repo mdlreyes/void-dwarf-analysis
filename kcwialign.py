@@ -104,7 +104,7 @@ def stack(galaxyname, mode, radec, box, outfile=None, plot=True, fakes=True, cub
         listdir+galaxyname+".list",
         ctype="icubes.c.fits",
         xymode=mode,
-        radec=(174.1787932, 26.72628063),
+        radec=radec,
         box=5,
         zmode="none",
         plot=True
