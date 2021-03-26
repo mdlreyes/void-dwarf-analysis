@@ -1,0 +1,13 @@
+CWITools cube ID list
+---------------
+
+# Location of input data - give one or more directories, separated by ';'
+DATA_DIRECTORY = /raid/keck/kcwi/2019dec30/redux/
+
+# Number of directory levels below 'DATA_DIRECTORY' to include in search
+SEARCH_DEPTH =  0
+
+# ID_LIST, one unique ID string per line, always starting with '>'
+---------------
+>kb191230_00046
+>kb191230_00048
