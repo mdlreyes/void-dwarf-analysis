@@ -54,7 +54,7 @@ def makefake(filename):
 
     return
 
-def stack(galaxyname, mode, radec, box, outfile=None, plot=True, fakes=True, cubed=False, listdir=''):
+def stack(galaxyname, mode, radec, box, outfile=None, plot=True, fakes=True, cubed=False, listdir='', drizzle=0.7):
     """Aligns and stacks datacubes.
 
         Args:
@@ -69,6 +69,7 @@ def stack(galaxyname, mode, radec, box, outfile=None, plot=True, fakes=True, cub
                         (cubes with unity flux, Gaussian error)
             cubed (bool): If 'True', also run cropping/stacking on *cubed.fits
             listdir (str): Folder where '.list' and '.wcs' files are stored
+            drizzle (float): pixfrac parameter for drizzling
 	"""
 
     # Make fake datacubes
@@ -137,11 +138,11 @@ def stack(galaxyname, mode, radec, box, outfile=None, plot=True, fakes=True, cub
 
         # Make images
         plt.subplot(projection=WCS(int_fits[0][0].header),slices=('x', 'y', 50))
-        ims = [plt.imshow(np.sum(int_fits[0][0].data,axis=0))]
+        ims = [plt.imshow(np.nansum(int_fits[0][0].data,axis=0))]
         for idx, intfit in enumerate(int_fits):
             if idx != 0:
                 array, footprint = reproject_interp(intfit, int_fits[0][0].header)
-                ims.append( plt.imshow(np.sum(array,axis=0)) )
+                ims.append( plt.imshow(np.nansum(array,axis=0)) )
                 ims[idx].set_visible(False)
 
         # Try plotting frames
@@ -168,7 +169,7 @@ def stack(galaxyname, mode, radec, box, outfile=None, plot=True, fakes=True, cub
     # Coadd the WCS-corrected data cubes
     print('Coadding datacubes')
     cwi_coadd(listdir+galaxyname+".list", ctype='icubes.c.wc.fits', masks='mcubes.c.wc.fits', var='vcubes.c.wc.fits', 
-        pa=None, px_thresh=0.5, exp_thresh=0.1, verbose=False, drizzle=0.7, out=outfile+".fits")
+        pa=None, px_thresh=0.5, exp_thresh=0.1, verbose=False, drizzle=0.8, out=outfile+".fits")
     os.rename(outfile+".fits", outfile+"_icubes.fits")
     os.rename(outfile+".var.fits", outfile+'_vcubes.fits')
 
@@ -237,7 +238,7 @@ def getdata(filename='', maskfile=None, z=0., plot=True, maskout=True):
         fig = plt.figure(figsize=(8,8))
         ax = plt.subplot(projection=wcs,slices=('x', 'y', 50))
         plt.title('White light image')
-        plt.imshow(np.sum(masked_data, axis=0), vmin=0)
+        plt.imshow(np.nansum(data, axis=0), vmin=0)
         plt.colorbar()
         plt.savefig(filename+'.png')
         plt.show()
