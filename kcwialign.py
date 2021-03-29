@@ -277,11 +277,12 @@ def covar_curve(ksizes, alpha, norm, thresh):
     res[ksizes > thresh] = norm * (1 + alpha * np.log(thresh))
     return res
 
-def estimatecovar(filename, maskfile=None, plot=True, n_w=20, bin_grid=[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]):
+def estimatecovar(galaxyname, folder='stackedcubes/old/', maskfile=None, plot=True, n_w=20, bin_grid=[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]):
     """Estimate covariance from test datacubes.
 
         Args:
-            filename (str): Base filename of fits file to measure 
+            galaxyname (str): Name of galaxy to estimate covariance for
+            folder (str): Folder where data are located
             maskfile (str): Full name of mask cube
             plot (bool): If 'True', plot aligned cubes to check them
             n_w (int): Number of independent wavelength slices to try
@@ -289,7 +290,7 @@ def estimatecovar(filename, maskfile=None, plot=True, n_w=20, bin_grid=[1,2,3,4,
     """
 
     # Open files
-    data, var, mask, wcs, wvl_zcorr = getdata(filename, maskfile=maskfile, plot=False)
+    data, var, mask, wcs, wvl_zcorr = getdata(folder+galaxyname+'_test', maskfile=maskfile, plot=False)
 
     # Apply mask
     var[mask != 0] = 0
@@ -413,15 +414,15 @@ def estimatecovar(filename, maskfile=None, plot=True, n_w=20, bin_grid=[1,2,3,4,
         plt.xlabel(r'$N_{\mathrm{bin}}$')
         plt.ylabel(r'$\eta$')
         plt.legend()
-        plt.savefig(filename+'covartest.png')
+        plt.savefig('figures/'+galaxyname+'/covartest.png')
         plt.show()
-    else:
-        print('Results:', popt)
+    
+    print('Results:', popt)
 
     return popt
 
 if __name__ == "__main__":
 
-    stack('reines65', 'xcor', radec=(174.1787932, 26.72628063), box=5, listdir='lists/', cubed=False)
-    getdata('stackedcubes/reines65', plot=True, maskout=True)  # Make sure stacking worked, make final mask
-    #estimatecovar('stackedcubes/reines65_test', plot=True)
+    #stack('reines65', 'xcor', radec=(174.1787932, 26.72628063), box=5, listdir='lists/', cubed=False)
+    #getdata('stackedcubes/reines65', plot=True, maskout=True)  # Make sure stacking worked, make final mask
+    estimatecovar('reines65', plot=True)

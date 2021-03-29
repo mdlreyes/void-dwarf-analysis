@@ -13,12 +13,14 @@ import numpy as np
 from astropy.io import fits
 from astropy.wcs import WCS
 import os
+from params import params
 
 # Packages for binning
+import kcwialign
 import vorbin
 from vorbin.voronoi_2d_binning import voronoi_2d_binning
 
-# Packages for stellar kinematic fitting
+# Packages for stellar continuum fitting
 import ppxf as ppxf_package
 from ppxf.ppxf import ppxf
 import ppxf.ppxf_util as util
@@ -78,6 +80,8 @@ class Cube:
 		# Make output folders
 		if not os.path.exists('output/'+self.galaxyname):
 			os.makedirs('output/'+self.galaxyname)
+		if not os.path.exists('figures/'+self.galaxyname):
+			os.makedirs('figures/'+self.galaxyname)
 
 		# Open main intensity cube
 		icube = fits.open(folder+filename+'_icubes.fits')
@@ -516,12 +520,14 @@ class Cube:
 			if verbose:
 				fig = plt.figure(figsize=(8,8))
 				ax = plt.subplot(projection=self.wcs,slices=('x', 'y', 50))
+				plt.title('Velocity (test)')
 				plt.imshow(self.vel)
 				plt.colorbar()
 				plt.show()
 
 				fig = plt.figure(figsize=(8,8))
 				ax = plt.subplot(projection=self.wcs,slices=('x', 'y', 50))
+				plt.title('Velocity mask')
 				plt.imshow(self.velmask)
 				plt.colorbar()
 				plt.show()
@@ -598,7 +604,7 @@ class Cube:
 				# Plot example spectrum
 				plt.figure(figsize=(12,5))
 				plt.title('single bin')
-				idx = 100
+				idx = 10
 				plt.plot(self.kinematics_wvl_bin[idx], self.data_norm_bin[idx])
 				plt.xlabel(r'$\lambda (\AA)$', fontsize=16)
 				plt.ylabel('Flux', fontsize=16)
@@ -612,14 +618,19 @@ class Cube:
 
 		return
 
-	def plotkinematics(self, vel='velocity.out', veldisp='veldisp.out', vel_err='vel_err.out', veldisp_err='veldisp_err.out', velmask='velmask.out', instdisp=False):
+	def plotkinematics(self, vel='velocity.out', veldisp='veldisp.out', vel_err='vel_err.out', 
+		veldisp_err='veldisp_err.out', velmask='velmask.out', 
+		instdisp=False, vellimit=None, veldisplimit=None, ploterrs=False):
 		""" Make kinematic plots.
 
 			Arguments:
 				vel, veldisp, vel_err, veldisp_err (2D arrays): kinematics measurements
-				(If set to 'None', will use output directly from stellarkinematics())
+					(If set to 'None', will use output directly from stellarkinematics())
 				velmask (2D bool array): mask marking bins where total S/N > some value (1 = good, 0 = bad)
 				instdisp (bool): if 'True', subtract (in quadrature) instrument dispersion from vel dispersion
+				vellimit, veldisplimit (float): limits for velocity and velocity dispersion maps
+					(velocity map goes from [-vellimit, vellimit], dispersion map goes from [0, veldisplimit])
+				ploterrs (bool): if 'True', also plot and save velocity/dispersion error maps
 		"""
 
 		print('Plotting stellar kinematic values...')
@@ -642,7 +653,7 @@ class Cube:
 			print(instdisp)
 			veldisp = np.sqrt(np.power(veldisp,2.) - instdisp**2.)
 
-		def plot(array, lowerlim=None, upperlim=None, error=None, nan=False, sn=None, velshift=None, mask=None, cmap='viridis', title=None): 
+		def plot(array, error=None, sn=None, limits=None, velshift=False, limit=None, mask=None, cmap='viridis', title=None, plotname=''): 
 
 			# Copy array
 			copy = np.copy(array)
@@ -653,46 +664,35 @@ class Cube:
 				idx = np.where(np.abs(copy/error) < sn)
 				copy[idx] = np.nan
 
-			if velshift is not None:
-				copy += velshift
-
+			# Mask any bad data
 			if mask is not None:
 				mask = np.array(mask, dtype=bool)
 				copy[~mask] = np.nan
 
-			if nan:
-				if lowerlim is not None:
-					copy[copy < lowerlim] = np.nan
-				if upperlim is not None:
-					copy[copy > upperlim] = np.nan
+			# Do velocity shift
+			if velshift:
+				velshift = -round(np.nanmean(copy),-1)
+				copy += velshift
 
-			#fig = plt.figure(figsize=(12,6))
-			#ax = fig.add_subplot(121,projection=self.wcs,slices=('x', 'y', 50))
-			#ax.set_title('Original white-light image')
-			#im=ax.imshow(np.ma.mean(self.data, axis=0), vmin=0)
-			#fig.colorbar(im, ax=ax)
-
-			#ax = fig.add_subplot(122,projection=self.wcs,slices=('x', 'y', 50))
 			fig = plt.figure(figsize=(8,8))
 			ax = plt.subplot(projection=self.wcs,slices=('x', 'y', 50))
 			ax.set_title(title)
-			if nan:
-				im = ax.imshow(copy, cmap=cmap, title=title)
+			if limits is None:
+				im = ax.imshow(copy, cmap=cmap)
 			else:
-				im = ax.imshow(copy, vmin=lowerlim, vmax=upperlim, cmap=cmap)
+				im = ax.imshow(copy, vmin=limits[0], vmax=limits[1], cmap=cmap)
 			fig.colorbar(im, ax=ax)
 
-			plt.savefig('figures/test.png', bbox_inches='tight') 
+			plt.savefig('figures/'+self.galaxyname+'/'+plotname+'.png', bbox_inches='tight') 
 			plt.show()
-
-			print(np.nanmean(copy))
 
 			return copy
 
-		plot(vel, error=vel_err, nan=False, velshift=-80, upperlim=100, lowerlim=-100, cmap='coolwarm', title='Velocity (km/s)', mask=velmask)
-		#plot(veldisp, error=veldisp_err, nan=False, title=r'$\sigma$ (km/s)', mask=velmask)
-		#plot(vel_err, nan=False, cmap='RdBu', title='Velocity error (km/s)') #mask=velmask, 
-		#plot(veldisp_err, nan=False, upperlim=200, title=r'$\sigma$ error (km/s)') #mask=velmask, 
+		plot(vel, error=vel_err, velshift=True, limits=[-vellimit,vellimit], cmap='coolwarm', title='Velocity (km/s)', mask=velmask, plotname='vel')
+		plot(veldisp, error=veldisp_err, limits=[0, veldisplimit], title=r'$\sigma$ (km/s)', mask=velmask, plotname='veldisp')
+		if ploterrs:
+			plot(vel_err, cmap='RdBu', title='Velocity error (km/s)', plotname='velerr') #mask=velmask, 
+			plot(veldisp_err, title=r'$\sigma$ error (km/s)', plotname='veldisperr') #mask=velmask, 
 
 		return
 
@@ -1013,7 +1013,7 @@ class Cube:
 			im = ax.imshow(ebv_err, cmap='viridis', interpolation='nearest')
 			fig.colorbar(im, ax=ax)
 
-			plt.savefig('figures/EBVtest.png', bbox_inches='tight')
+			plt.savefig('figures/'+self.galaxyname+'/EBVtest.png', bbox_inches='tight')
 			plt.show()
 
 		return
@@ -1082,12 +1082,52 @@ class Cube:
 
 		return
 
+def runredux(galaxyname, folder='/raid/madlr/voids/analysis/stackedcubes/'):
+	""" Run full redux pipeline.
+
+	Arguments:
+		verbose (bool): if 'True', make diagnostic plots
+		overwrite (bool): if 'True', overwrite existing data files
+		binned (bool): if 'True', use binned spectra instead of individual spaxels
+	"""
+
+	# Open params
+	param = params[galaxyname]
+
+	# Open cube
+	c = Cube(galaxyname, folder=folder, verbose=param['verbose'], wcscorr=param['wcscorr'], z=param['z'], EBV=param['EBV'])
+
+	# Get covariance estimate
+	covparams = kcwialign.estimatecovar(galaxyname, folder=folder, plot=param['plotcovar'], maskfile=folder+galaxyname+'_mcubes.fits')
+
+	# Bin spaxels by continuum S/N, accounting for covariance
+	c.binspaxels(targetsn=param['targetsn'], params=covparams, emline=None, verbose=param['verbose'])
+
+	# Do continuum fitting to get stellar kinematics
+	c.stellarkinematics(overwrite=True, snr_mask=param['snr_mask'], verbose=param['verbose'])
+
+	# Make kinematics plots
+	c.plotkinematics(instdisp=param['instdisp'], vellimit=param['vellimit'], veldisplimit=param['veldisplimit'])
+
+	# TODO: Re-bin, this time using emission line S/N
+	#c.binspaxels(verbose=False, targetsn=10, params=covparams, emline='Hbeta')
+
+	# TODO: Correct for reddening
+	#c.reddening(verbose=True, overwrite=True, binned=True)
+
+	# TODO: Compute metallicity
+	#c.metallicity_Te(overwrite=True)
+
+	return
+
 def main():
 
-	c = Cube('reines65', folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/analysis/', verbose=False, wcscorr=[174.17801 - 174.1787083, 26.727126 - 26.7263583], z=0.0331, EBV=0.0217)
-	c.binspaxels(verbose=False, targetsn=10, params=[0.11038457, 1.6406684, 75.89559487], emline=None)
+	runredux('reines65', folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/analysis/stackedcubes/old/')
+
+	#c = Cube('reines65', folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/analysis/stackedcubes/old/', verbose=False, wcscorr=[174.17801 - 174.1787083, 26.727126 - 26.7263583], z=0.0331, EBV=0.0217)
+	#c.binspaxels(verbose=False, targetsn=10, params=[0.11038457, 1.6406684, 75.89559487], emline=None)
 	#c.stellarkinematics(verbose=False, overwrite=True, snr_mask=1)
-	#c.plotkinematics(instdisp=False)
+	#c.plotkinematics(instdisp=False, vellimit=100, veldisplimit=150)
 	#c.reddening(verbose=True, overwrite=True, binned=True)
 
 	return
