@@ -28,14 +28,6 @@ def makefake(filename):
         vals = np.random.normal(size=vhdu[0].data.shape)
         vhdu[0].data = vals**2.
 
-        '''
-        plt.hist(vals.flatten())
-        plt.show()
-        print(np.std(vals))
-        plt.hist((vals**2.).flatten())
-        plt.show()
-        '''
-
         print('Writing to '+filename+'_vcubes.test.fits')
         vhdu.writeto(filename+'_vcubes.test.fits', overwrite=True)
 
@@ -43,11 +35,6 @@ def makefake(filename):
 
         # Add new fake variances to unity intensity
         ihdu[0].data = 1. + vals
-
-        '''
-        plt.hist((1.+vals).flatten())
-        plt.show()
-        '''
 
         print('Writing to '+filename+'_icubes.test.fits')
         ihdu.writeto(filename+'_icubes.test.fits', overwrite=True) 

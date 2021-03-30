@@ -676,12 +676,13 @@ class Cube:
 
 			fig = plt.figure(figsize=(8,8))
 			ax = plt.subplot(projection=self.wcs,slices=('x', 'y', 50))
-			ax.set_title(title)
+			ax.text(0.03, 0.95, self.galaxyname, transform=ax.transAxes, fontsize=14)
+			plt.grid(color='black', ls='dotted')
 			if limits is None:
 				im = ax.imshow(copy, cmap=cmap)
 			else:
 				im = ax.imshow(copy, vmin=limits[0], vmax=limits[1], cmap=cmap)
-			fig.colorbar(im, ax=ax)
+			fig.colorbar(im, ax=ax, label=title)
 
 			plt.savefig('figures/'+self.galaxyname+'/'+plotname+'.png', bbox_inches='tight') 
 			plt.show()
@@ -1101,7 +1102,7 @@ def runredux(galaxyname, folder='/raid/madlr/voids/analysis/stackedcubes/'):
 	covparams = kcwialign.estimatecovar(galaxyname, folder=folder, plot=param['plotcovar'], maskfile=folder+galaxyname+'_mcubes.fits')
 
 	# Bin spaxels by continuum S/N, accounting for covariance
-	c.binspaxels(targetsn=param['targetsn'], params=covparams, emline=None, verbose=param['verbose'])
+	c.binspaxels(targetsn=param['targetsn'], params=[ 0.10659743, 1.65631532, 76.8237105 ], emline=None, verbose=param['verbose'])
 
 	# Do continuum fitting to get stellar kinematics
 	c.stellarkinematics(overwrite=True, snr_mask=param['snr_mask'], verbose=param['verbose'])
