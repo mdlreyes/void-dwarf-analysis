@@ -94,13 +94,13 @@ class Cube:
 			var = ecube[0].data
 
 		# Open mask cube
-		#with fits.open(folder+filename+'_mcubes.fits') as mcube:
-		#	self.mask = mcube[0].data
-		self.mask = np.zeros_like(data)
-		badidx = np.where((np.isclose(data,0)) & (np.isclose(var,0)))
-		self.mask[badidx] = True
-		badidx = np.where((data < 0.) | (~np.isfinite(var)))
-		self.mask[badidx] = True
+		with fits.open(folder+filename+'_mcubes.fits') as mcube:
+			self.mask = mcube[0].data
+		#self.mask = np.zeros_like(data)
+		#badidx = np.where((np.isclose(data,0)) & (np.isclose(var,0)))
+		#self.mask[badidx] = True
+		#badidx = np.where((data < 0.) | (~np.isfinite(var)))
+		#self.mask[badidx] = True
 
 		# Mask the data and variance cubes
 		self.data = np.ma.array(data, mask=self.mask)
@@ -269,11 +269,11 @@ class Cube:
 			sn = np.sum(signal[index])/np.sqrt(np.sum(noise[index]**2))
 
 			# Apply covariance correction
-			alpha, norm, threshold = params
-			if index.size >= threshold:
-				correction = norm * (1 + alpha * np.log(threshold))
+			self.alpha, self.norm, self.threshold = params
+			if index.size >= self.threshold:
+				correction = self.norm * (1 + self.alpha * np.log(self.threshold))
 			else:
-				correction = norm * (1 + alpha * np.log(index.size))
+				correction = self.norm * (1 + self.alpha * np.log(index.size))
 
 			return sn/correction
 
@@ -323,8 +323,14 @@ class Cube:
 					for i in range(len(xarray)):
 						stacked_data[:,np.int(round(xarray[i])),np.int(round(yarray[i]))] = np.ma.mean(binned_spec)
 
+			# Compute covariance correction
+			if len(xarray) >= self.threshold:
+				correction = self.norm * (1 + self.alpha * np.log(self.threshold))
+			else:
+				correction = self.norm * (1 + self.alpha * np.log(len(xarray)))
+
 			self.stacked_spec[binID] = np.ma.mean(binned_spec, axis=0)
-			self.stacked_errs[binID] = np.ma.mean(binned_err, axis=0)
+			self.stacked_errs[binID] = np.ma.mean(binned_err, axis=0) * correction**2. / len(xarray)
 
 		# For testing purposes, save arrays of bin IDs and bin errors
 		np.save('output/'+self.galaxyname+'/binIDarray', self.binIDarray)
@@ -697,7 +703,7 @@ class Cube:
 		plot(vel, error=vel_err, velshift=True, limits=[-vellimit,vellimit], cmap='coolwarm', title='Velocity (km/s)', mask=velmask, plotname='vel')
 		plot(veldisp, error=veldisp_err, limits=[0, veldisplimit], title=r'$\sigma$ (km/s)', mask=velmask, plotname='veldisp')
 		if ploterrs:
-			plot(vel_err, cmap='RdBu', title='Velocity error (km/s)', plotname='velerr') #mask=velmask, 
+			plot(vel_err, title='Velocity error (km/s)', plotname='velerr') #mask=velmask, 
 			plot(veldisp_err, title=r'$\sigma$ error (km/s)', plotname='veldisperr') #mask=velmask, 
 
 		return
@@ -1117,7 +1123,7 @@ def runredux(galaxyname, folder='/raid/madlr/voids/analysis/stackedcubes/', make
 		c.stellarkinematics(overwrite=True, snr_mask=param['snr_mask'], verbose=param['verbose'])
 
 	# Make kinematics plots
-	c.plotkinematics(instdisp=param['instdisp'], vellimit=param['vellimit'], veldisplimit=param['veldisplimit'])
+	c.plotkinematics(instdisp=param['instdisp'], vellimit=param['vellimit'], veldisplimit=param['veldisplimit'], ploterrs=True)
 
 	# TODO: Re-bin, this time using emission line S/N
 	#c.binspaxels(verbose=False, targetsn=10, params=covparams, emline='Hbeta')
@@ -1132,11 +1138,11 @@ def runredux(galaxyname, folder='/raid/madlr/voids/analysis/stackedcubes/', make
 
 def main():
 
-	#runredux('reines65', folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/analysis/stackedcubes/', makeplots=True)
+	runredux('reines65', folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/analysis/stackedcubes/', makeplots=True)
 
-	c = Cube('reines65', folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/analysis/stackedcubes/', verbose=False, wcscorr=[174.17801 - 174.1787083, 26.727126 - 26.7263583], z=0.0331, EBV=0.0217)
-	c.binspaxels(verbose=False, targetsn=10, params=[0.108,1.65,80], emline=None)
-	c.stellarkinematics(verbose=True, overwrite=True, snr_mask=1)
+	#c = Cube('reines65', folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/analysis/stackedcubes/', verbose=False, wcscorr=[174.17801 - 174.1787083, 26.727126 - 26.7263583], z=0.0331, EBV=0.0217)
+	#c.binspaxels(verbose=False, targetsn=10, params=[0.108,1.65,80], emline=None)
+	#c.stellarkinematics(verbose=True, overwrite=True, snr_mask=1)
 	#c.plotkinematics(instdisp=False, vellimit=100, veldisplimit=150)
 	#c.reddening(verbose=True, overwrite=True, binned=True)
 
