@@ -393,16 +393,18 @@ def estimatecovar(galaxyname, folder='stackedcubes/old/', maskfile=None, plot=Tr
     popt, pcov = curve_fit(covar_curve, kernel_areas, noise_ratios, bounds=([0.1, 1., 30.], [10., 2., 150.]))
 
     # Plot results
+    plt.plot(kernel_areas, noise_ratios, 'ko')
+    kareas_smooth = np.linspace(kernel_areas.min(), kernel_areas.max(), 1000)
+    plt.plot(kareas_smooth, covar_curve(kareas_smooth, *popt), 'r-',
+        label='Fit: alpha=%5.3f, norm=%5.3f, thresh=%5.3f' % tuple(popt))
+    plt.xlabel(r'$N_{\mathrm{bin}}$')
+    plt.ylabel(r'$\eta$')
+    plt.legend()
+    plt.savefig('figures/'+galaxyname+'/covartest.png')
     if plot:
-        plt.plot(kernel_areas, noise_ratios, 'ko')
-        kareas_smooth = np.linspace(kernel_areas.min(), kernel_areas.max(), 1000)
-        plt.plot(kareas_smooth, covar_curve(kareas_smooth, *popt), 'r-',
-            label='Fit: alpha=%5.3f, norm=%5.3f, thresh=%5.3f' % tuple(popt))
-        plt.xlabel(r'$N_{\mathrm{bin}}$')
-        plt.ylabel(r'$\eta$')
-        plt.legend()
-        plt.savefig('figures/'+galaxyname+'/covartest.png')
         plt.show()
+    else:
+        plt.close()
     
     print('Results:', popt)
 

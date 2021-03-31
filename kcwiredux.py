@@ -94,8 +94,13 @@ class Cube:
 			var = ecube[0].data
 
 		# Open mask cube
-		with fits.open(folder+filename+'_mcubes.fits') as mcube:
-			self.mask = mcube[0].data
+		#with fits.open(folder+filename+'_mcubes.fits') as mcube:
+		#	self.mask = mcube[0].data
+		self.mask = np.zeros_like(data)
+		badidx = np.where((np.isclose(data,0)) & (np.isclose(var,0)))
+		self.mask[badidx] = True
+		badidx = np.where((data < 0.) | (~np.isfinite(var)))
+		self.mask[badidx] = True
 
 		# Mask the data and variance cubes
 		self.data = np.ma.array(data, mask=self.mask)
@@ -1083,13 +1088,15 @@ class Cube:
 
 		return
 
-def runredux(galaxyname, folder='/raid/madlr/voids/analysis/stackedcubes/'):
+def runredux(galaxyname, folder='/raid/madlr/voids/analysis/stackedcubes/', makeplots=False):
 	""" Run full redux pipeline.
 
 	Arguments:
 		verbose (bool): if 'True', make diagnostic plots
 		overwrite (bool): if 'True', overwrite existing data files
 		binned (bool): if 'True', use binned spectra instead of individual spaxels
+		makeplots (bool): if 'True', just run the steps required to make plots
+			(note: only works if all steps have been run before!)
 	"""
 
 	# Open params
@@ -1098,14 +1105,16 @@ def runredux(galaxyname, folder='/raid/madlr/voids/analysis/stackedcubes/'):
 	# Open cube
 	c = Cube(galaxyname, folder=folder, verbose=param['verbose'], wcscorr=param['wcscorr'], z=param['z'], EBV=param['EBV'])
 
-	# Get covariance estimate
-	covparams = kcwialign.estimatecovar(galaxyname, folder=folder, plot=param['plotcovar'], maskfile=folder+galaxyname+'_mcubes.fits')
+	if not makeplots:
+		# Get covariance estimate
+		covparams = kcwialign.estimatecovar(galaxyname, folder=folder, plot=param['plotcovar'], maskfile=folder+galaxyname+'_mcubes.fits')
 
 	# Bin spaxels by continuum S/N, accounting for covariance
 	c.binspaxels(targetsn=param['targetsn'], params=[ 0.10659743, 1.65631532, 76.8237105 ], emline=None, verbose=param['verbose'])
 
-	# Do continuum fitting to get stellar kinematics
-	c.stellarkinematics(overwrite=True, snr_mask=param['snr_mask'], verbose=param['verbose'])
+	if not makeplots:
+		# Do continuum fitting to get stellar kinematics
+		c.stellarkinematics(overwrite=True, snr_mask=param['snr_mask'], verbose=param['verbose'])
 
 	# Make kinematics plots
 	c.plotkinematics(instdisp=param['instdisp'], vellimit=param['vellimit'], veldisplimit=param['veldisplimit'])
@@ -1123,11 +1132,11 @@ def runredux(galaxyname, folder='/raid/madlr/voids/analysis/stackedcubes/'):
 
 def main():
 
-	runredux('reines65', folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/analysis/stackedcubes/old/')
+	#runredux('reines65', folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/analysis/stackedcubes/', makeplots=True)
 
-	#c = Cube('reines65', folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/analysis/stackedcubes/old/', verbose=False, wcscorr=[174.17801 - 174.1787083, 26.727126 - 26.7263583], z=0.0331, EBV=0.0217)
-	#c.binspaxels(verbose=False, targetsn=10, params=[0.11038457, 1.6406684, 75.89559487], emline=None)
-	#c.stellarkinematics(verbose=False, overwrite=True, snr_mask=1)
+	c = Cube('reines65', folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/analysis/stackedcubes/', verbose=False, wcscorr=[174.17801 - 174.1787083, 26.727126 - 26.7263583], z=0.0331, EBV=0.0217)
+	c.binspaxels(verbose=False, targetsn=10, params=[0.108,1.65,80], emline=None)
+	c.stellarkinematics(verbose=True, overwrite=True, snr_mask=1)
 	#c.plotkinematics(instdisp=False, vellimit=100, veldisplimit=150)
 	#c.reddening(verbose=True, overwrite=True, binned=True)
 

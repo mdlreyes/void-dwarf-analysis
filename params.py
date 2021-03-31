@@ -41,8 +41,8 @@ params = \
         'plotcovar': True, 
         'targetsn': targetsn,
         'snr_mask': snr_mask,
-        'instdisp': False,
-        'vellimit': 100,
+        'instdisp': True,
+        'vellimit': 150,
         'veldisplimit': 150
     },
 '2502521': 
