@@ -668,7 +668,7 @@ class Cube:
 
 			# Copy array
 			copy = np.copy(array)
-			copy[copy==0] = np.nan
+			#copy[copy==0] = np.nan
 
 			# Do S/N cut on data
 			if error is not None and sn is not None:
