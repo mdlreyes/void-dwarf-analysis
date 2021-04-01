@@ -10,6 +10,12 @@
 #matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 
+# Change fonts
+from matplotlib import rc
+#rc('font',**{'family':'sans-serif','sans-serif':['Helvetica']})
+rc('font',**{'family':'serif','serif':['Palatino']})
+rc('text', usetex=True)
+
 import numpy as np
 from astropy.io import fits
 from astropy.wcs import WCS
@@ -336,13 +342,27 @@ class Cube:
 		if plot:
 			plt.show()
 
-		print("Formal errors:")
-		print("     dV    dsigma   dh3      dh4")
-		print("".join("%8.2g" % f for f in pp.error*np.sqrt(pp.chi2)))
-
+		print('Chi2:', pp.chi2)
 		print('Best-fitting redshift z:', (self.z + 1)*(1 + pp.sol[0]/c) - 1)
+		print('Final solution:', pp.sol)
+		print("Errors:", pp.error*np.sqrt(pp.chi2))
 
-		return np.asarray([pp.sol[0], pp.sol[1], pp.error[0]*np.sqrt(pp.chi2), pp.error[1]*np.sqrt(pp.chi2)]), np.exp(logLam1), pp.bestfit
+		if plot:
+			plt.figure(figsize=(9,3))
+			lines = np.array([3726.03, 3728.82, 3970.08, 4101.76, 4340.47, 4363.21, 4861.33, 
+					4958.92, 5006.84, 6300.30, 6548.03, 6583.41, 6562.80, 6716.47, 6730.85])
+			for line in lines:
+				if line < np.exp(logLam1)[-1]:
+					plt.axvspan(line-10., line+10., color='gray', alpha=0.25)
+			plt.fill_between(np.exp(logLam1), galaxy-np.sqrt(noise),galaxy+np.sqrt(noise), color='r', alpha=0.8)
+			plt.plot(np.exp(logLam1), pp.bestfit, 'k-')
+			plt.xlabel(r'$\lambda (\AA)$', fontsize=14)
+			plt.ylabel(r'Normalized flux', fontsize=14)
+			plt.ylim(-0.05,2.0)
+			plt.savefig('figures/'+self.galaxyname+'/'+'intspec.png', bbox_inches='tight') 
+			plt.show()
+
+		return np.asarray([pp.sol[0], pp.sol[1], pp.error[0]*np.sqrt(pp.chi2), pp.error[1]*np.sqrt(pp.chi2)]), np.exp(logLam1), pp.bestfit, galaxy, noise
 
 	# TODO: Compute integrated stellar abundances???
 
@@ -350,11 +370,29 @@ class Cube:
 
 	# TODO: Compute integrated gas-phase metallicity
 
+def getsystvel(galaxyname, folder='/raid/madlr/voids/analysis/stackedcubes/'):
+	""" Run full pipeline to get systemic stellar kinematics.
+
+	Arguments:
+		verbose (bool): if 'True', make diagnostic plots
+		overwrite (bool): if 'True', overwrite existing data files
+		makeplots (bool): if 'True', just run the steps required to make plots
+			(note: only works if all steps have been run before!)
+	"""
+
+	# Open params
+	param = params[galaxyname]
+
+	# Open cube
+	c = Cube(galaxyname, folder=folder, verbose=param['verbose'], wcscorr=param['wcscorr'], z=param['z'], EBV=param['EBV'])
+	c.integrate(plot=False, covparams=param['covparams'])
+	c.stellarfit(plot=True)
+
 def main():
 
 	c = Cube('reines65', folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/analysis/stackedcubes/', verbose=False, wcscorr=[174.17801 - 174.1787083, 26.727126 - 26.7263583], z=0.0331, EBV=0.0217)
 	#c.ellipsefit()
-	c.integrate(plot=False, covparams=(0.108,1.65,80))
+	c.integrate(plot=False, covparams=[0.108,1.65,80])
 	c.stellarfit(plot=True)
 
 	return
