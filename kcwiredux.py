@@ -504,7 +504,7 @@ class Cube:
 				xarray = np.asarray(-(self.x[idx]-self.ra0)/self.rad)
 				yarray = np.asarray((self.y[idx]-self.dec0)/self.decd)
 
-				print('chi2:', params[4])
+				#print('chi2:', params[4])
 
 				if plottest:
 					if params[2] > np.abs(params[0]) or params[3] > params[1]:
@@ -1123,16 +1123,20 @@ def runredux(galaxyname, folder='/raid/madlr/voids/analysis/stackedcubes/', make
 	# Open cube
 	c = Cube(galaxyname, folder=folder, verbose=param['verbose'], wcscorr=param['wcscorr'], z=param['z'], EBV=param['EBV'])
 
-	if not makeplots:
+	if (not makeplots) and (param['plotcovar']):
 		# Get covariance estimate
-		covparams = kcwialign.estimatecovar(galaxyname, folder=folder, plot=param['plotcovar'], maskfile=folder+galaxyname+'_mcubes.fits')
+		covparams = kcwialign.estimatecovar(galaxyname, folder=folder, plot=True, maskfile=folder+galaxyname+'_mcubes.fits')
+	else:
+		covparams = param['covparams']
+
+	print(covparams, param['targetsn'])
 
 	# Bin spaxels by continuum S/N, accounting for covariance
-	c.binspaxels(targetsn=param['targetsn'], params=[ 0.10659743, 1.65631532, 76.8237105 ], emline=None, verbose=param['verbose'])
+	c.binspaxels(targetsn=param['targetsn'], params=covparams, emline=None, verbose=param['verbose'])
 
 	if not makeplots:
 		# Do continuum fitting to get stellar kinematics
-		c.stellarkinematics(overwrite=True, snr_mask=param['snr_mask'], verbose=param['verbose'])
+		c.stellarkinematics(overwrite=True, snr_mask=param['snr_mask'], verbose=param['verbose']) #, plottest=True)
 
 	# Make kinematics plots
 	c.plotkinematics(instdisp=param['instdisp'], vellimit=param['vellimit'], veldisplimit=param['veldisplimit'], ploterrs=True)
@@ -1152,10 +1156,10 @@ def main():
 
 	#runredux('reines65', folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/analysis/stackedcubes/')
 
-	c = Cube('reines65', folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/analysis/stackedcubes/', verbose=False, wcscorr=[174.17801 - 174.1787083, 26.727126 - 26.7263583], z=0.0331, EBV=0.0217)
-	c.binspaxels(verbose=False, targetsn=15, params=[0.108,1.65,80], emline=None)
-	c.stellarkinematics(verbose=False, overwrite=True, snr_mask=1, plottest=True)
-	c.plotkinematics(instdisp=False, vellimit=100, veldisplimit=150, ploterrs=True)
+	#c = Cube('reines65', folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/analysis/stackedcubes/', verbose=False, wcscorr=[174.17801 - 174.1787083, 26.727126 - 26.7263583], z=0.0331, EBV=0.0217)
+	#c.binspaxels(verbose=False, targetsn=15, params=[0.108,1.65,80], emline=None)
+	#c.stellarkinematics(verbose=False, overwrite=True, snr_mask=1, plottest=True)
+	#c.plotkinematics(instdisp=False, vellimit=100, veldisplimit=150, ploterrs=True)
 	#c.reddening(verbose=True, overwrite=True, binned=True)
 
 	return

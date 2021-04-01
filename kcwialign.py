@@ -193,16 +193,20 @@ def getdata(filename='', maskfile=None, z=0., plot=True, maskout=True):
     icube = fits.open(filename+'_icubes.fits')
     data = icube[0].data
     wcs = WCS(icube[0].header)
+    print(data.shape)
 
     # Error cube
     vcube = fits.open(filename+'_vcubes.fits')
     var = vcube[0].data
 
     # Mask cube
+    makemask = False
     if maskfile is not None:
         mcube = fits.open(maskfile)
         mask = mcube[0].data
-    else:
+        if mask.shape != data.shape:
+            makemask = True
+    if (maskfile is None) or makemask:
         # Mask cube
         mask = np.zeros_like(data)
         badidx = np.where((np.isclose(data,0)) & (np.isclose(var,0)))
