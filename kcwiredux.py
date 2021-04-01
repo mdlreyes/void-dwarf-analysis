@@ -449,14 +449,14 @@ class Cube:
 			plt.show()
 
 			print("Formal errors:")
-			print("     dV    dsigma   dh3      dh4")
+			print("     dV    dsigma")
 			print("".join("%8.2g" % f for f in pp.error*np.sqrt(pp.chi2)))
 
 			print('Best-fitting redshift z:', (self.z + 1)*(1 + pp.sol[0]/c) - 1)
 
-		return np.asarray([pp.sol[0], pp.sol[1], pp.error[0]*np.sqrt(pp.chi2), pp.error[1]*np.sqrt(pp.chi2)]), np.exp(logLam1), pp.bestfit
+		return np.asarray([pp.sol[0], pp.sol[1], pp.error[0]*np.sqrt(pp.chi2), pp.error[1]*np.sqrt(pp.chi2), pp.chi2]), np.exp(logLam1), pp.bestfit, galaxy, noise
 
-	def stellarkinematics(self, verbose=False, removekinematics=True, overwrite=False, snr_mask=1):
+	def stellarkinematics(self, verbose=False, removekinematics=True, overwrite=False, snr_mask=1, plottest=False):
 		""" Do stellar kinematics fitting with pPXF. Note: must run prepstellarfit() first!
 
 			Arguments:
@@ -464,7 +464,7 @@ class Cube:
 				removekinematics (bool): if 'True' (default), output a data_norm cube with best-fit stellar template subtracted
 				overwrite (bool): if 'True', overwrite existing files
 				snr_mask (float): produce velmask.out file marking any bins where S/N > snr_mask
-
+				plottest (bool): if 'True', plot all potentially "bad" bins
 		"""
 
 		# If output files don't exist, run kinematics fitting
@@ -491,7 +491,7 @@ class Cube:
 			for binID in tqdm(range(len(self.bins))):
 
 				# Do stellar kinematic fit
-				params, fitwvl, fit = self.ppxf_fit(self.stacked_spec[binID], self.stacked_errs[binID], verbose=False)
+				params, fitwvl, fit, obs, obserr = self.ppxf_fit(self.stacked_spec[binID], self.stacked_errs[binID], verbose=False)
 
 				# Put fit for each bin into an array
 				self.kinematics_fit_bin[binID] = fit
@@ -503,6 +503,16 @@ class Cube:
 				# Get RA/Dec of all the pixels in a bin
 				xarray = np.asarray(-(self.x[idx]-self.ra0)/self.rad)
 				yarray = np.asarray((self.y[idx]-self.dec0)/self.decd)
+
+				print('chi2:', params[4])
+
+				if plottest:
+					if params[2] > np.abs(params[0]) or params[3] > params[1]:
+						print(binID, xarray[0], yarray[0])
+						print(params)
+						plt.plot(fitwvl, fit, 'r-')
+						plt.fill_between(fitwvl, obs-np.sqrt(obserr),obs+np.sqrt(obserr), color='gray', alpha=0.5)
+						plt.show()
 
 				# Loop over all pixels in the bin and append the spectrum and errors from each pixel to lists
 				for i in range(len(xarray)):
@@ -516,6 +526,8 @@ class Cube:
 					# Add the best-fit solution to arrays
 					self.kinematics_fit[:,np.int(round(xarray[i])),np.int(round(yarray[i]))] = fit
 					self.kinematics_wvl[:,np.int(round(xarray[i])),np.int(round(yarray[i]))] = fitwvl
+
+				# TODO: Compute v/sigma and specific angular momentum (Eq 1 from Ferre-Mateu+2021)
 
 			np.savetxt('output/'+self.galaxyname+'/velocity.out', self.vel)
 			np.savetxt('output/'+self.galaxyname+'/veldisp.out', self.veldisp)
@@ -1138,12 +1150,12 @@ def runredux(galaxyname, folder='/raid/madlr/voids/analysis/stackedcubes/', make
 
 def main():
 
-	runredux('reines65', folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/analysis/stackedcubes/', makeplots=True)
+	#runredux('reines65', folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/analysis/stackedcubes/')
 
-	#c = Cube('reines65', folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/analysis/stackedcubes/', verbose=False, wcscorr=[174.17801 - 174.1787083, 26.727126 - 26.7263583], z=0.0331, EBV=0.0217)
-	#c.binspaxels(verbose=False, targetsn=10, params=[0.108,1.65,80], emline=None)
-	#c.stellarkinematics(verbose=True, overwrite=True, snr_mask=1)
-	#c.plotkinematics(instdisp=False, vellimit=100, veldisplimit=150)
+	c = Cube('reines65', folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/analysis/stackedcubes/', verbose=False, wcscorr=[174.17801 - 174.1787083, 26.727126 - 26.7263583], z=0.0331, EBV=0.0217)
+	c.binspaxels(verbose=False, targetsn=15, params=[0.108,1.65,80], emline=None)
+	c.stellarkinematics(verbose=False, overwrite=True, snr_mask=1, plottest=True)
+	c.plotkinematics(instdisp=False, vellimit=100, veldisplimit=150, ploterrs=True)
 	#c.reddening(verbose=True, overwrite=True, binned=True)
 
 	return
