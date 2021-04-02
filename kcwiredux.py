@@ -514,7 +514,8 @@ class Cube:
 
 				if binID == self.centeridx:
 					systvel = params[0]
-					print('Systematic velocity:'+"\t".join("%.2f" % f for f in [params[0],params[2]]))
+					print('Systemic velocity:')
+					print("\t".join("%.2f" % f for f in [params[0],params[2]]))
 
 				# Put fit for each bin into an array
 				self.kinematics_fit_bin[binID] = fit
