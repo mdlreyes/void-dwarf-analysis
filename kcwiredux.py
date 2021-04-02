@@ -1190,7 +1190,7 @@ def runredux(galaxyname, folder='/raid/madlr/voids/analysis/stackedcubes/', make
 
 	if not makeplots:
 		# Do continuum fitting to get stellar kinematics
-		c.stellarkinematics(overwrite=True, snr_mask=param['snr_mask'], verbose=param['verbose', systvel=param['systvel']])
+		c.stellarkinematics(overwrite=True, snr_mask=param['snr_mask'], verbose=param['verbose'], systvel=param['systvel'])
 
 	# Make kinematics plots
 	c.plotkinematics(instdisp=param['instdisp'], vellimit=param['vellimit'], veldisplimit=param['veldisplimit'], 
