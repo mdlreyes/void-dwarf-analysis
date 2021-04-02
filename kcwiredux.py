@@ -336,6 +336,14 @@ class Cube:
 		np.save('output/'+self.galaxyname+'/binIDarray', self.binIDarray)
 		np.save('output/'+self.galaxyname+'/binerrs', self.stacked_errs)
 
+		# Find luminosity-weighted center
+		xcenter = np.sum(self.x * s)/np.sum(s)
+		ycenter = np.sum(self.y * s)/np.sum(s)
+		print('center:', xcenter, ycenter)
+
+		# Find bin where center is located
+		self.centeridx = (np.sqrt((xNode-xcenter)**2. + (yNode-ycenter)**2.)).argmin()
+
 		# Plot test figures
 		if verbose:
 
@@ -456,7 +464,7 @@ class Cube:
 
 		return np.asarray([pp.sol[0], pp.sol[1], pp.error[0]*np.sqrt(pp.chi2), pp.error[1]*np.sqrt(pp.chi2), pp.chi2]), np.exp(logLam1), pp.bestfit, galaxy, noise
 
-	def stellarkinematics(self, verbose=False, removekinematics=True, overwrite=False, snr_mask=1, plottest=False, systvel=None):
+	def stellarkinematics(self, verbose=False, removekinematics=True, overwrite=False, snr_mask=1, plottest=False, vsigma=True):
 		""" Do stellar kinematics fitting with pPXF. Note: must run prepstellarfit() first!
 
 			Arguments:
@@ -465,7 +473,7 @@ class Cube:
 				overwrite (bool): if 'True', overwrite existing files
 				snr_mask (float): produce velmask.out file marking any bins where S/N > snr_mask
 				plottest (bool): if 'True', plot all potentially "bad" bins
-				systvel (float): systematic vel (km/s); if not None, compute global v/sigma for galaxy
+				vsigma (bool): if 'True', compute global v/sigma for galaxy
 		"""
 
 		# If output files don't exist, run kinematics fitting
@@ -489,7 +497,7 @@ class Cube:
 			print('Doing stellar kinematics fit...')
 
 			# If computing global v/sigma, prep the outputs
-			if systvel is not None:
+			if vsigma:
 				vtotalsq = 0.
 				verrtotal = 0.
 				sigtotalsq = 0.
@@ -503,6 +511,10 @@ class Cube:
 
 				# Do stellar kinematic fit
 				params, fitwvl, fit, obs, obserr = self.ppxf_fit(self.stacked_spec[binID], self.stacked_errs[binID], verbose=False)
+
+				if binID == self.centeridx:
+					systvel = params[0]
+					print('Systematic velocity:'+"\t".join("%.2f" % f for f in [params[0],params[2]]))
 
 				# Put fit for each bin into an array
 				self.kinematics_fit_bin[binID] = fit
@@ -539,7 +551,7 @@ class Cube:
 					self.kinematics_wvl[:,np.int(round(xarray[i])),np.int(round(yarray[i]))] = fitwvl
 
 					# If doing v/sigma calculation, compute total continuum flux in bin
-					if systvel is not None:
+					if vsigma:
 						
 						# First get wavelength range, excluding emission lines
 						contwvl = np.ones_like(self.wvl_zcorr, dtype='bool')
@@ -554,7 +566,7 @@ class Cube:
 						flux += np.sum(self.data[contwvl,np.int(round(xarray[i])),np.int(round(yarray[i]))])
 
 				# Compute v/sigma and specific angular momentum (Eq 1 from Ferre-Mateu+2021)
-				if systvel is not None:
+				if vsigma:
 
 					vtotalsq += flux * (params[0]-systvel)**2. * 1/(params[2]**2.)
 					verrtotal += 1./(params[2]**2.)  # Do weighted average
@@ -565,7 +577,7 @@ class Cube:
 					totalflux += flux
 
 			# Do final computation of v/sigma
-			if systvel is not None:
+			if vsigma:
 				vtotalsq /= verrtotal
 				sigtotalsq /= sigerrtotal
 				weightedvelerr /= totalflux
@@ -573,6 +585,9 @@ class Cube:
 				kinematics = [np.sqrt(vtotalsq), np.sqrt(sigtotalsq), np.sqrt(weightedvelerr), np.sqrt(weightedsigerr)]
 				print('Global kinematics:')
 				print("\t".join("%.2f" % f for f in kinematics))
+
+			# Correct for systemic velocity
+			self.vel += -systvel
 
 			np.savetxt('output/'+self.galaxyname+'/velocity.out', self.vel)
 			np.savetxt('output/'+self.galaxyname+'/veldisp.out', self.veldisp)
@@ -688,7 +703,7 @@ class Cube:
 
 	def plotkinematics(self, vel='velocity.out', veldisp='veldisp.out', vel_err='vel_err.out', 
 		veldisp_err='veldisp_err.out', velmask='velmask.out', 
-		instdisp=False, vellimit=None, veldisplimit=None, systvel=None, ploterrs=False):
+		instdisp=False, vellimit=None, veldisplimit=None, ploterrs=False):
 		""" Make kinematic plots.
 
 			Arguments:
@@ -738,6 +753,7 @@ class Cube:
 				copy[~mask] = np.nan
 
 			# Do velocity shift
+			'''
 			if velshift is not None:
 				# If velocity shift was input but not defined (i.e., don't use systemic velocity)
 				if np.isclose(velshift, 0.):
@@ -747,6 +763,7 @@ class Cube:
 				velshift = -round(velshift,-1)
 				print('Velocity shift:', velshift)
 				copy += velshift
+			'''
 
 			fig = plt.figure(figsize=(8,8))
 			ax = plt.subplot(projection=self.wcs,slices=('x', 'y', 50))
@@ -763,10 +780,7 @@ class Cube:
 
 			return copy
 
-		if systvel is None:
-			systvel = 0.
-
-		plot(vel, error=vel_err, velshift=systvel, limits=[-vellimit,vellimit], cmap='coolwarm', title='Velocity (km/s)', mask=velmask, plotname='vel')
+		plot(vel, error=vel_err, limits=[-vellimit,vellimit], cmap='coolwarm', title='Velocity (km/s)', mask=velmask, plotname='vel')
 		plot(veldisp, error=veldisp_err, limits=[0, veldisplimit], title=r'$\sigma$ (km/s)', mask=velmask, plotname='veldisp')
 		if ploterrs:
 			plot(vel_err, title='Velocity error (km/s)', plotname='velerr') #mask=velmask, 
@@ -1190,11 +1204,10 @@ def runredux(galaxyname, folder='/raid/madlr/voids/analysis/stackedcubes/', make
 
 	if not makeplots:
 		# Do continuum fitting to get stellar kinematics
-		c.stellarkinematics(overwrite=True, snr_mask=param['snr_mask'], verbose=param['verbose'], systvel=param['systvel'])
+		c.stellarkinematics(overwrite=True, snr_mask=param['snr_mask'], verbose=param['verbose'], vsigma=True)
 
 	# Make kinematics plots
-	c.plotkinematics(instdisp=param['instdisp'], vellimit=param['vellimit'], veldisplimit=param['veldisplimit'], 
-		systvel=param['systvel'], ploterrs=True)
+	c.plotkinematics(instdisp=param['instdisp'], vellimit=param['vellimit'], veldisplimit=param['veldisplimit'], ploterrs=True)
 
 	# TODO: Re-bin, this time using emission line S/N
 	#c.binspaxels(verbose=False, targetsn=10, params=covparams, emline='Hbeta')
@@ -1213,7 +1226,7 @@ def main():
 
 	c = Cube('reines65', folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/analysis/stackedcubes/', verbose=False, wcscorr=[174.17801 - 174.1787083, 26.727126 - 26.7263583], z=0.0331, EBV=0.0217)
 	c.binspaxels(verbose=False, targetsn=15, params=[0.108,1.65,80], emline=None)
-	c.stellarkinematics(verbose=False, overwrite=True, snr_mask=1, plottest=False) #, systvel=-18.52)
+	c.stellarkinematics(verbose=False, overwrite=True, snr_mask=1, plottest=False, vsigma=True)
 	c.plotkinematics(instdisp=False, vellimit=100, veldisplimit=150, ploterrs=True)
 	#c.reddening(verbose=True, overwrite=True, binned=True)
 
