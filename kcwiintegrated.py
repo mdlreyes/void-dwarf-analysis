@@ -392,7 +392,7 @@ def getsystvel(galaxyname, folder='/raid/madlr/voids/analysis/stackedcubes/'):
 
 def main():
 
-	c = Cube('reines65', folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/analysis/stackedcubes/', verbose=False, wcscorr=[174.17801 - 174.1787083, 26.727126 - 26.7263583], z=0.0331, EBV=0.0217)
+	c = Cube('reines65', folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/redux/stackedcubes/', verbose=False, wcscorr=[174.17801 - 174.1787083, 26.727126 - 26.7263583], z=0.0331, EBV=0.0217)
 	#c.ellipsefit()
 	c.integrate(plot=False, covparams=[0.108,1.65,80])
 	c.stellarfit(plot=True)

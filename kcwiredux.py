@@ -1239,9 +1239,9 @@ def runredux(galaxyname, folder='/raid/madlr/voids/analysis/stackedcubes/', make
 
 def main():
 
-	#runredux('reines65', folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/analysis/stackedcubes/')
+	#runredux('reines65', folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/redux/stackedcubes/')
 
-	c = Cube('reines65', folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/analysis/stackedcubes/', verbose=False, wcscorr=[174.17801 - 174.1787083, 26.727126 - 26.7263583], z=0.0331, EBV=0.0217)
+	c = Cube('reines65', folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/redux/stackedcubes/', verbose=False, wcscorr=[174.17801 - 174.1787083, 26.727126 - 26.7263583], z=0.0331, EBV=0.0217)
 	c.binspaxels(verbose=False, targetsn=15, params=[0.108,1.65,80], emline=None)
 	c.stellarkinematics(verbose=False, overwrite=True, snr_mask=1, plottest=False, vsigma=True)
 	c.plotkinematics(instdisp=False, vellimit=100, veldisplimit=150, ploterrs=True)
