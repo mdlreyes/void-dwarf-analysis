@@ -343,6 +343,7 @@ class Cube:
 
 		# Find bin where center is located
 		self.centeridx = (np.sqrt((xNode-xcenter)**2. + (yNode-ycenter)**2.)).argmin()
+		print(self.centeridx)
 
 		# Plot test figures
 		if verbose:
@@ -387,12 +388,12 @@ class Cube:
 		galaxy, logLam1, velscale = util.log_rebin(self.lamRange1, spectrum)
 
 		# Read the list of filenames from the E-MILES SSP library
-		vazdekis = glob.glob(ppxf_dir + '/miles_models/Mun1.30*.fits')
+		vazdekis = glob.glob(ppxf_dir + '/miles_stellar/s*.fits')
 		fwhm_tem = 2.51  # Vazdekis+10 spectra have a constant resolution FWHM of 2.51A.
 
 		# Open template spectrum in order to make get the size of the template array
 		hdu = fits.open(vazdekis[0])
-		ssp = hdu[0].data
+		ssp = np.squeeze(hdu[0].data)
 		h2 = hdu[0].header
 		self.lamRange2 = h2['CRVAL1'] + np.array([0., h2['CDELT1']*(h2['NAXIS1'] - 1)])
 		sspNew, logLam2, velscale_temp = util.log_rebin(self.lamRange2, ssp, velscale=velscale)
@@ -410,7 +411,7 @@ class Cube:
 		# Open and normalize all the templates
 		for j, file in enumerate(vazdekis):
 			hdu = fits.open(file)
-			ssp = hdu[0].data
+			ssp = np.squeeze(hdu[0].data)
 			sspNew, self.logLam2, velscale_temp = util.log_rebin(self.lamRange2, ssp, velscale=velscale)
 			self.templates[:, j] = sspNew/np.median(sspNew)  # Normalizes templates
 
@@ -506,16 +507,28 @@ class Cube:
 				weightedsigerr = 0.
 				totalflux = 0.
 
+			# Compute systemic velocity
+			if np.any(self.stacked_errs[self.centeridx] < 0) or ~np.all(np.isfinite(self.stacked_errs[self.centeridx])):
+				self.stacked_errs[self.centeridx][self.stacked_errs[self.centeridx] < 0] = 1e-6
+				self.stacked_errs[self.centeridx][~np.isfinite(self.stacked_errs[self.centeridx])] = 1e-6
+			params, fitwvl, fit, obs, obserr = self.ppxf_fit(self.stacked_spec[self.centeridx], self.stacked_errs[self.centeridx], verbose=False)
+			systvel = params[0]
+			print('Systemic velocity:')
+			print("\t".join("%.2f" % f for f in [params[0],params[2]]))
+			
+
 			# Loop over all bins
 			for binID in tqdm(range(len(self.bins))):
+
+				if np.any(self.stacked_errs[binID] < 0) or ~np.all(np.isfinite(self.stacked_errs[binID])):
+					self.stacked_errs[binID][self.stacked_errs[binID] < 0] = 1e-6
+					self.stacked_errs[binID][~np.isfinite(self.stacked_errs[binID])] = 1e-6
 
 				# Do stellar kinematic fit
 				params, fitwvl, fit, obs, obserr = self.ppxf_fit(self.stacked_spec[binID], self.stacked_errs[binID], verbose=False)
 
-				if binID == self.centeridx:
-					systvel = params[0]
-					print('Systemic velocity:')
-					print("\t".join("%.2f" % f for f in [params[0],params[2]]))
+				if np.isclose(params[2],0.) or np.isclose(params[3],0.): # or (params[2] > 70):
+					params = [np.nan, np.nan, np.nan, np.nan, np.nan]
 
 				# Put fit for each bin into an array
 				self.kinematics_fit_bin[binID] = fit
@@ -564,21 +577,24 @@ class Cube:
 							contwvl[wvlrange] = False
 
 						# Now add up all data in the correct wvl range
-						flux += np.sum(self.data[contwvl,np.int(round(xarray[i])),np.int(round(yarray[i]))])
+						flux += np.nansum(self.data[contwvl,np.int(round(xarray[i])),np.int(round(yarray[i]))])
 
 				# Compute v/sigma and specific angular momentum (Eq 1 from Ferre-Mateu+2021)
-				if vsigma:
-
+				if vsigma and np.all(np.isfinite(params)):
 					vtotalsq += flux * (params[0]-systvel)**2. * 1/(params[2]**2.)
-					verrtotal += 1./(params[2]**2.)  # Do weighted average
-					sigtotalsq += flux * params[1]**2. * 1/(params[3]**2.)
-					sigerrtotal += 1./(params[3]**2.)  # Do weighted average
+					verrtotal += flux * 1./(params[2]**2.)  # Do weighted average
 					weightedvelerr += flux * params[2]**2.
-					weightedsigerr += flux * params[3]**2.
 					totalflux += flux
+
+					# Extra conditions for sigma
+					if ~(params[1] < 1. and params[3] > 100.):
+						sigtotalsq += flux * params[1]**2. * 1/(params[3]**2.)
+						sigerrtotal += flux * 1./(params[3]**2.)  # Do weighted average
+						weightedsigerr += flux * params[3]**2.
 
 			# Do final computation of v/sigma
 			if vsigma:
+				print(vtotalsq, verrtotal, sigtotalsq, sigerrtotal, weightedvelerr, weightedsigerr, totalflux)
 				vtotalsq /= verrtotal
 				sigtotalsq /= sigerrtotal
 				weightedvelerr /= totalflux
@@ -712,8 +728,8 @@ class Cube:
 					(If set to 'None', will use output directly from stellarkinematics())
 				velmask (2D bool array): mask marking bins where total S/N > some value (1 = good, 0 = bad)
 				instdisp (bool): if 'True', subtract (in quadrature) instrument dispersion from vel dispersion
-				vellimit, veldisplimit (float): limits for velocity and velocity dispersion maps
-					(velocity map goes from [-vellimit, vellimit], dispersion map goes from [0, veldisplimit])
+				vellimit, veldisplimit (float, float list): limits for velocity and velocity dispersion maps
+					(velocity map goes from [-vellimit, vellimit], dispersion map goes from [veldisplimit[0], veldisplimit[1]])
 				ploterrs (bool): if 'True', also plot and save velocity/dispersion error maps
 		"""
 
@@ -782,7 +798,7 @@ class Cube:
 			return copy
 
 		plot(vel, error=vel_err, limits=[-vellimit,vellimit], cmap='coolwarm', title='Velocity (km/s)', mask=velmask, plotname='vel')
-		plot(veldisp, error=veldisp_err, limits=[0, veldisplimit], title=r'$\sigma$ (km/s)', mask=velmask, plotname='veldisp')
+		plot(veldisp, error=veldisp_err, limits=[veldisplimit[0], veldisplimit[1]], title=r'$\sigma$ (km/s)', mask=velmask, plotname='veldisp')
 		if ploterrs:
 			plot(vel_err, title='Velocity error (km/s)', plotname='velerr') #mask=velmask, 
 			plot(veldisp_err, title=r'$\sigma$ error (km/s)', plotname='veldisperr') #mask=velmask, 
