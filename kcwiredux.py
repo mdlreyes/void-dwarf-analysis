@@ -388,7 +388,8 @@ class Cube:
 		galaxy, logLam1, velscale = util.log_rebin(self.lamRange1, spectrum)
 
 		# Read the list of filenames from the E-MILES SSP library
-		vazdekis = glob.glob(ppxf_dir + '/miles_stellar/s*.fits')
+		vazdekis = glob.glob(ppxf_dir + '/miles_models/Mun*.fits')
+		#vazdekis = glob.glob(ppxf_dir + '/miles_stellar/s*.fits')
 		fwhm_tem = 2.51  # Vazdekis+10 spectra have a constant resolution FWHM of 2.51A.
 
 		# Open template spectrum in order to make get the size of the template array
@@ -515,8 +516,9 @@ class Cube:
 			systvel = params[0]
 			print('Systemic velocity:')
 			print("\t".join("%.2f" % f for f in [params[0],params[2]]))
+			print('Central velocity dispersion:')
+			print("\t".join("%.2f" % f for f in [params[1],params[3]]))
 			
-
 			# Loop over all bins
 			for binID in tqdm(range(len(self.bins))):
 
@@ -602,6 +604,7 @@ class Cube:
 				kinematics = [np.sqrt(vtotalsq), np.sqrt(sigtotalsq), np.sqrt(weightedvelerr), np.sqrt(weightedsigerr)]
 				print('Global kinematics:')
 				print("\t".join("%.2f" % f for f in kinematics))
+				print("Vmax: %.2f" % np.max(self.vel))
 
 			# Correct for systemic velocity
 			self.vel += -systvel
