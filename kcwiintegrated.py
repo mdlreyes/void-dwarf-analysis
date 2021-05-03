@@ -408,6 +408,9 @@ class Cube:
 		# Now logarithmically rebin this new observed spectrum
 		galaxy, logLam1, velscale = util.log_rebin(lamRange1, galspec, velscale=velscale)
 
+		# TEST: log-rebin the error spectrum too?
+		noise, _, _ = util.log_rebin(lamRange1, noise, velscale=velscale)
+
 		# Open and normalize all the templates
 		for j, file in enumerate(vazdekis):
 			hdu = fits.open(file)
