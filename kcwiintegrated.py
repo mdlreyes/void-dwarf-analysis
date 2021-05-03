@@ -6,8 +6,8 @@
 ######################################
 
 #Backend for python3 on mahler
-#import matplotlib
-#matplotlib.use('TkAgg')
+import matplotlib
+matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 
 # Change fonts
@@ -580,7 +580,7 @@ class Cube:
 				verbose (bool): if 'True', make diagnostic plots
 		"""
 
-		print('Getting electron temperature...')
+		print('Measuring gas-phase abundance...')
 
 		# Get de-reddened data
 		try:
@@ -593,34 +593,78 @@ class Cube:
 			kinematics_wvl = np.load('output/'+self.galaxyname+'/'+'intspec_wvl.npy')
 
 		# Get line fluxes
-		resultOIII4363 = fitline(data_norm, kinematics_wvl, errs_norm, 'OIII4363', plot=verbose)
-		resultOIII4959 = fitline(data_norm, kinematics_wvl, errs_norm, 'OIII4959', plot=verbose)
-		resultOIII5007 = fitline(data_norm, kinematics_wvl, errs_norm, 'OIII5007', plot=verbose)
-		resultOII3727 = fitline(data_norm, kinematics_wvl, errs_norm, 'OII3727doublet', plot=verbose)
-		resultHbeta = fitline(data_norm, kinematics_wvl, errs_norm, 'Hbeta', plot=verbose)
+		resultOIII4363 = fitline(data_norm, kinematics_wvl, errs_norm, 'OIII4363', plot=False)
+		resultOIII4959 = fitline(data_norm, kinematics_wvl, errs_norm, 'OIII4959', plot=False)
+		resultOIII5007 = fitline(data_norm, kinematics_wvl, errs_norm, 'OIII5007', plot=False)
+		resultOII3727 = fitline(data_norm, kinematics_wvl, errs_norm, 'OII3727doublet', plot=False)
+		resultHbeta = fitline(data_norm, kinematics_wvl, errs_norm, 'Hbeta', plot=False)
 
 		if np.any(~np.isfinite([i[-1] for i in [resultOIII4363,resultOIII4959,resultOIII5007]])):
 			print('One or more of the OIII lines is not well measured. Check fluxes: ', [i[0] for i in [resultOIII4363,resultOIII4959,resultOIII5007]])
 
-		# Measure OIII electron temp using Nicholls et al. (2020) calibration
-		x = np.log10(resultOIII4363[0]/(resultOIII4959[0] + resultOIII5007[0]))  # log10(f4363/f5007)
-		Te_OIII = np.power(10., (3.3027 + 9.1917*x)/(1. + 2.092*x - 0.1503*x**2 - 0.0093*x**3))  # K
+		# Compute metallicity using MC method to get errors
+		Niter = int(1e4)
+		gasZ_Te = np.zeros(Niter)
+		for i in tqdm(range(Niter)):
 
-		# Measure OII electron temp using Lopez-Sanchez et al. (2012)
-		Te_OII = Te_OIII + 450 - 70*np.exp((Te_OIII/5000.)**1.22)
+			# Pull from distribution of line fluxes
+			OIII4363 = np.random.default_rng().normal(loc=resultOIII4363[0], scale=resultOIII4363[1])
+			OIII4959 = np.random.default_rng().normal(loc=resultOIII4959[0], scale=resultOIII4959[1])
+			OIII5007 = np.random.default_rng().normal(loc=resultOIII5007[0], scale=resultOIII5007[1])
+			OII3727 = np.random.default_rng().normal(loc=resultOII3727[0], scale=resultOII3727[1])
+			Hbeta = np.random.default_rng().normal(loc=resultHbeta[0], scale=resultHbeta[1])
 
-		# Compute O/H ionic ratios using Pérez-Montero (2017) analytical functions
-		# Note that these units are 12 + log(O/H)
-		tO2 = Te_OIII/1e4
-		tO = Te_OII/1e4
-		ne = 100.  # assume fixed electron density (cm^-3)
-		O2H2 = np.log10((resultOIII4959[0] + resultOIII5007[0])/resultHbeta[0]) + 6.1868 + 1.2491/tO2 - 0.5816 * np.log10(tO2)
-		OH = np.log10(resultOII3727[0]/resultHbeta[0]) + 5.887 + 1.641/tO - 0.543*np.log10(tO) + 0.000114 * ne
+			# Measure OIII electron temp using Nicholls et al. (2020) calibration
+			x = np.log10(OIII4363/(OIII4959 + OIII5007))  # log10(f4363/f5007)
+			Te_OIII = np.power(10., (3.3027 + 9.1917*x)/(1. + 2.092*x - 0.1503*x**2 - 0.0093*x**3))  # K
 
-		self.gasZ = 12. + np.log10(10.**(O2H2 - 12.) + 10.**(OH - 12.))
-		print('Gas-phase metallicity: ', self.gasZ)
+			# Measure OII electron temp using Lopez-Sanchez et al. (2012)
+			Te_OII = Te_OIII + 450 - 70*np.exp((Te_OIII/5000.)**1.22)
 
-		return self.gasZ
+			# Compute O/H ionic ratios using Pérez-Montero (2017) analytical functions
+			# Note that these units are 12 + log(O/H)
+			tO2 = Te_OIII/1e4
+			tO = Te_OII/1e4
+			ne = 100.  # assume fixed electron density (cm^-3)
+			O2H2 = np.log10((OIII4959 + OIII5007)/Hbeta) + 6.1868 + 1.2491/tO2 - 0.5816 * np.log10(tO2)
+			OH = np.log10(OII3727/Hbeta) + 5.887 + 1.641/tO - 0.543*np.log10(tO) + 0.000114 * ne
+
+			gasZ = 12. + np.log10(10.**(O2H2 - 12.) + 10.**(OH - 12.))
+			if gasZ < 12.:
+				gasZ_Te[i] = gasZ
+			else:
+				gasZ_Te[i] = np.nan
+
+		# Compute E(B-V) mean and errors
+		self.gasZ = np.nanmean(gasZ_Te, axis=0)
+		self.gasZ_err = np.nanstd(gasZ_Te, axis=0)
+		print('Gas-phase metallicity: ', self.gasZ, self.gasZ_err)
+
+		# Make test plots
+		if verbose:
+			# Measure metallicity from measured values
+			x = np.log10(resultOIII4363[0]/(resultOIII4959[0] + resultOIII5007[0]))  # log10(f4363/f5007)
+			Te_OIII = np.power(10., (3.3027 + 9.1917*x)/(1. + 2.092*x - 0.1503*x**2 - 0.0093*x**3))  # K
+			Te_OII = Te_OIII + 450 - 70*np.exp((Te_OIII/5000.)**1.22)
+			ne = 100.  # assume fixed electron density (cm^-3)
+			O2H2 = np.log10((resultOIII4959[0] + resultOIII5007[0])/resultHbeta[0]) + 6.1868 + 1.2491/(Te_OIII/1e4) - 0.5816 * np.log10(Te_OIII/1e4)
+			OH = np.log10(resultOII3727[0]/resultHbeta[0]) + 5.887 + 1.641/(Te_OII/1e4) - 0.543*np.log10(Te_OII/1e4) + 0.000114 * ne
+			gasZ = 12. + np.log10(10.**(O2H2 - 12.) + 10.**(OH - 12.))
+
+			# Plot histogram of MC results
+			plt.hist(gasZ_Te)
+			plt.axvline(gasZ, color='r', label="Measured from original fluxes: {:.2f}".format(gasZ))
+			plt.axvline(self.gasZ, color='k', linestyle='--', label="Mean: {:.2f}".format(self.gasZ))
+			plt.axvspan(self.gasZ-self.gasZ_err,self.gasZ+self.gasZ_err, color='gray', alpha=0.25, label=r"$\sigma$: {:.2f}".format(self.gasZ_err))
+			plt.axvline(np.nanpercentile(gasZ_Te, 16.), color='b', linestyle='--')
+			plt.axvline(np.nanpercentile(gasZ_Te, 84.), color='b', linestyle='--')
+			plt.xlabel('12+log(O/H)')
+			plt.ylabel('N')
+			plt.savefig('figures/'+self.galaxyname+'/intspec_gasZtest.png', bbox_inches='tight')
+			plt.legend(loc='best')
+			plt.show()
+
+		return self.gasZ, self.gasZ_err
 
 def integratedpipeline(galaxyname, folder='/raid/madlr/voids/analysis/stackedcubes/'):
 	""" Run full pipeline to get: 
