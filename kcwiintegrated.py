@@ -419,6 +419,7 @@ class Cube:
 		galaxy = galaxy/np.median(galaxy)
 
 		print('Doing stellar kinematics fit...')
+		print(galaxy.shape, noise.shape)
 
 		# Shift the template to fit the starting wavelength of the galaxy spectrum
 		c = 299792.458
@@ -593,11 +594,11 @@ class Cube:
 			kinematics_wvl = np.load('output/'+self.galaxyname+'/'+'intspec_wvl.npy')
 
 		# Get line fluxes
-		resultOIII4363 = fitline(data_norm, kinematics_wvl, errs_norm, 'OIII4363', plot=False)
-		resultOIII4959 = fitline(data_norm, kinematics_wvl, errs_norm, 'OIII4959', plot=False)
-		resultOIII5007 = fitline(data_norm, kinematics_wvl, errs_norm, 'OIII5007', plot=False)
-		resultOII3727 = fitline(data_norm, kinematics_wvl, errs_norm, 'OII3727doublet', plot=False)
-		resultHbeta = fitline(data_norm, kinematics_wvl, errs_norm, 'Hbeta', plot=False)
+		resultOIII4363 = fitline(data_norm, kinematics_wvl, errs_norm, 'OIII4363', plot=verbose)
+		resultOIII4959 = fitline(data_norm, kinematics_wvl, errs_norm, 'OIII4959', plot=verbose)
+		resultOIII5007 = fitline(data_norm, kinematics_wvl, errs_norm, 'OIII5007', plot=verbose)
+		resultOII3727 = fitline(data_norm, kinematics_wvl, errs_norm, 'OII3727doublet', plot=verbose)
+		resultHbeta = fitline(data_norm, kinematics_wvl, errs_norm, 'Hbeta', plot=verbose)
 
 		if np.any(~np.isfinite([i[-1] for i in [resultOIII4363,resultOIII4959,resultOIII5007]])):
 			print('One or more of the OIII lines is not well measured. Check fluxes: ', [i[0] for i in [resultOIII4363,resultOIII4959,resultOIII5007]])
