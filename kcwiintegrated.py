@@ -39,7 +39,7 @@ from scipy import ndimage
 from astropy.modeling import models, fitting
 from k_lambda import k_lambda
 from tqdm import tqdm
-import pyneb as pn
+#import pyneb as pn
 
 # Wavelength dictionary for standard lines (from NIST when possible)
 wvldict = {'Hbeta':4861.35, 'Hgamma':4340.472, 'Hdelta':4101.734, 'Hepsilon':3970.075,
