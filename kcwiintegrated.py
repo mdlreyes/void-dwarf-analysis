@@ -639,21 +639,23 @@ class Cube:
 			else:
 				gasZ_Te[i] = np.nan
 
-		# Compute E(B-V) mean and errors
+		# Compute metallicity from measured values
+		x = np.log10(resultOIII4363[0]/(resultOIII4959[0] + resultOIII5007[0]))  # log10(f4363/f5007)
+		Te_OIII = np.power(10., (3.3027 + 9.1917*x)/(1. + 2.092*x - 0.1503*x**2 - 0.0093*x**3))  # K
+		Te_OII = Te_OIII + 450 - 70*np.exp((Te_OIII/5000.)**1.22)
+		ne = 100.  # assume fixed electron density (cm^-3)
+		O2H2 = np.log10((resultOIII4959[0] + resultOIII5007[0])/resultHbeta[0]) + 6.1868 + 1.2491/(Te_OIII/1e4) - 0.5816 * np.log10(Te_OIII/1e4)
+		OH = np.log10(resultOII3727[0]/resultHbeta[0]) + 5.887 + 1.641/(Te_OII/1e4) - 0.543*np.log10(Te_OII/1e4) + 0.000114 * ne
+		gasZ = 12. + np.log10(10.**(O2H2 - 12.) + 10.**(OH - 12.))
+		print('Gas-phase metallicity (from measurements): ', gasZ)
+
+		# Compute metallicity mean and errors
 		self.gasZ = np.nanmean(gasZ_Te, axis=0)
 		self.gasZ_err = np.nanstd(gasZ_Te, axis=0)
-		print('Gas-phase metallicity: ', self.gasZ, self.gasZ_err)
+		print('Gas-phase metallicity (from distribution): ', self.gasZ, self.gasZ_err)
 
 		# Make test plots
 		if verbose:
-			# Measure metallicity from measured values
-			x = np.log10(resultOIII4363[0]/(resultOIII4959[0] + resultOIII5007[0]))  # log10(f4363/f5007)
-			Te_OIII = np.power(10., (3.3027 + 9.1917*x)/(1. + 2.092*x - 0.1503*x**2 - 0.0093*x**3))  # K
-			Te_OII = Te_OIII + 450 - 70*np.exp((Te_OIII/5000.)**1.22)
-			ne = 100.  # assume fixed electron density (cm^-3)
-			O2H2 = np.log10((resultOIII4959[0] + resultOIII5007[0])/resultHbeta[0]) + 6.1868 + 1.2491/(Te_OIII/1e4) - 0.5816 * np.log10(Te_OIII/1e4)
-			OH = np.log10(resultOII3727[0]/resultHbeta[0]) + 5.887 + 1.641/(Te_OII/1e4) - 0.543*np.log10(Te_OII/1e4) + 0.000114 * ne
-			gasZ = 12. + np.log10(10.**(O2H2 - 12.) + 10.**(OH - 12.))
 
 			# Plot histogram of MC results
 			plt.hist(gasZ_Te)
