@@ -39,10 +39,91 @@ from scipy import ndimage
 from astropy.modeling import models, fitting
 from k_lambda import k_lambda
 from tqdm import tqdm
+import pyneb as pn
 
 # Wavelength dictionary for standard lines (from NIST when possible)
 wvldict = {'Hbeta':4861.35, 'Hgamma':4340.472, 'Hdelta':4101.734, 'Hepsilon':3970.075,
-		'OII3727':3727.320, 'OII3729':3729.225, 'OII3727_doublet':3728., 'OIII4363':4363.209, 'OIII4959':4959., 'OIII5007':5006.8}
+		'OII3727':3727.320, 'OII3729':3729.225, 'OII3727doublet':3728., 'OIII4363':4363.209, 'OIII4959':4959., 'OIII5007':5006.8}
+
+def fitline(data, wvlarray, err, line_name, xlim=10., plot=False):
+	""" Fits gas emission lines and makes emission line maps.
+
+		Arguments:
+			datanorm, wvlnorm, errnorm (1D array): data, wavelength, and error arrays to be fit
+			line_name (string): name of line to fit
+			xlim (float): in Angstroms, half of wavelength range about line center to fit
+			plot (bool): if 'True', make test plots
+
+		Returns:
+			integral, integral_err, stddev, stddev_err, snr (floats): line flux, width, signal/noise
+	"""
+
+	# Get central line wavelength
+	line = wvldict[line_name]
+
+	# Crop spectrum arrays to only contain area around the line
+	idx = np.where((wvlarray > (line-xlim)) & (wvlarray < (line+xlim)))[0]
+	wvl = wvlarray[idx]
+	flux = data[idx]
+	err = err[idx]
+
+	# Fit line with Gaussian + linear background
+	gaussian_model = models.Gaussian1D(np.max(flux), line, 2) + models.Linear1D(0,0)
+	fitter = fitting.LevMarLSQFitter()
+	gaussian_fit = fitter(gaussian_model, wvl, flux, weights=1./err)
+
+	# Get best-fit parameters
+	params = gaussian_fit.parameters
+	amp, mean, stddev = params[0:3]
+
+	try:
+		paramerrs = np.sqrt(np.diag(fitter.fit_info['param_cov']))
+		amp_err, mean_err, stddev_err = paramerrs[0:3]
+	except:
+		amp_err, mean_err, stddev_err = [np.nan, np.nan, np.nan]
+
+	integral = np.sqrt(2.*np.pi)*amp*stddev
+	integral_err = integral * np.sqrt(2.*np.pi)*np.sqrt((amp_err/amp)**2. + (stddev_err/stddev)**2.)
+
+	if plot:
+		fig, ax = plt.subplots()
+		plt.plot(wvlarray, data, 'k-')
+		plt.plot(wvl, gaussian_fit(wvl), 'r-')
+		plt.axvspan(gaussian_fit[0].mean-2.5*gaussian_fit[0].stddev, gaussian_fit[0].mean+2.5*gaussian_fit[0].stddev, alpha=0.5)
+		plt.axvspan(gaussian_fit[0].mean+5*gaussian_fit[0].stddev,gaussian_fit[0].mean+10*gaussian_fit[0].stddev, color='C1', alpha=0.5)
+		plt.axvspan(gaussian_fit[0].mean-10*gaussian_fit[0].stddev,gaussian_fit[0].mean-5*gaussian_fit[0].stddev, color='C1', alpha=0.5)
+		plt.xlim(gaussian_fit[0].mean-50,gaussian_fit[0].mean+50)
+		plt.xlabel(r'$\lambda (\AA)$', fontsize=14)
+		plt.ylabel(r'Normalized flux', fontsize=14)
+		plt.text(0.05, 0.9, line_name, transform=ax.transAxes)
+		plt.show()
+
+	# Compute SNR
+	if integral > 1e-3 and stddev < xlim/2. and np.abs(mean - line) < xlim/2.:
+
+		emidx = np.where((wvl > (mean-2.5*stddev)) & (wvl < (mean+2.5*stddev)))[0]
+		emflux = flux[emidx]
+
+		cont1idx = np.where((wvl < (mean-5*stddev)))[0]
+		cont2idx = np.where((wvl > (mean+5*stddev)))[0]
+		contflux1 = flux[cont1idx]
+		contflux2 = flux[cont2idx]
+
+		signal = np.sum(emflux - np.mean(np.hstack((contflux1,contflux2)))) / np.sqrt(len(emflux))
+		noisecont = (np.std(contflux1) + np.std(contflux2)) / 2. # Continuum noise
+		pois = np.random.poisson(size=len(emflux))
+		noisepois = np.std(pois/np.sum(pois)*np.sqrt(emflux)) # Poisson noise
+		noise = np.sqrt(noisecont**2. + noisepois**2.)
+
+	else:
+		signal, noise = [np.nan, np.nan]
+
+	if signal/noise > 0.:
+		snr = signal/noise
+	else:
+		snr = np.nan
+
+	return integral, integral_err, stddev, stddev_err, snr
 
 class Cube:
 	"""
@@ -131,7 +212,8 @@ class Cube:
 		if EBV > 0.:
 			Alam = k_lambda(self.wvl_zcorr)*EBV
 			Alam_array = np.tile(Alam[:, np.newaxis, np.newaxis], (1, self.data.shape[1], self.data.shape[2]))
-			self.data = self.data/np.power(10.,(Alam_array/(-2.5)))
+			self.data /= np.power(10.,(Alam_array/(-2.5)))
+			self.var /= (np.power(10.,(Alam_array/(-2.5))))**2.
 
 		# Define wavelength ranges
 		bband_center = 4130.
@@ -241,6 +323,12 @@ class Cube:
 			snmask = np.where(sntest > 1)
 			n_goodpix = len(snmask[0])
 
+		# TODO: add other modes to integrate spectra?
+		if mode=='isophote':
+			pass
+		if mode=='sersic':
+			pass
+
 		# Apply covariance correction
 		alpha, norm, threshold = covparams
 		self.covcorr = norm * (1 + alpha * np.log(threshold))
@@ -268,10 +356,14 @@ class Cube:
 		return
 
 	def stellarfit(self, plot=True):
-		""" Fit stellar continuum of integrated spectra
+		""" Fit stellar continuum of integrated spectra, return stellar kinematics,
+			and subtract continuum/absorption features.
 
 			Args:
 				plot (bool): if 'True', make plots
+
+			Returns:
+				kinematics (array): [vel, veldisp, vel_err, veldisp_err, wvlarray, fitspectrum, obsspectrum, obsspectrum_err]
 		"""
 
 		print('Preparing templates for stellar kinematics fit...')
@@ -294,8 +386,9 @@ class Cube:
 		# Rebin spectrum into log scale to get initial velocity scale
 		galaxy, logLam1, velscale = util.log_rebin(lamRange1, spectrum)
 
-		# Read the list of filenames from the E-MILES SSP library
-		vazdekis = glob.glob(ppxf_dir + '/miles_models/Mun1.30*.fits')
+		# Read the list of filenames from template library 
+		vazdekis = glob.glob(ppxf_dir + '/miles_models/Mun1.30*.fits') # From E-MILES SSP library
+		#vazdekis = glob.glob(ppxf_dir + '/miles_stellar/s*.fits') # From MILES stellar library
 		fwhm_tem = 2.51  # Vazdekis+10 spectra have a constant resolution FWHM of 2.51A.
 
 		# Open template spectrum in order to get the size of the template array
@@ -362,22 +455,181 @@ class Cube:
 			plt.savefig('figures/'+self.galaxyname+'/'+'intspec.png', bbox_inches='tight') 
 			plt.show()
 
+		# Subtract stellar contribution from spectrum
+		print('Normalizing data by best-fit stellar template...')
+		self.spectrum_norm = galaxy - pp.bestfit*np.median(galaxy)
+		self.kinematics_wvl = np.exp(logLam1)
+		np.save('output/'+self.galaxyname+'/intspec_norm', self.spectrum_norm)
+		np.save('output/'+self.galaxyname+'/intspec_wvl', self.kinematics_wvl)
+
+		# Plot image for testing
+		if plot:
+
+			# Plot example spectrum
+			plt.figure(figsize=(9,3))
+			lines = np.array([3726.03, 3728.82, 3970.08, 4101.76, 4340.47, 4363.21, 4861.33, 
+					4958.92, 5006.84, 6300.30, 6548.03, 6583.41, 6562.80, 6716.47, 6730.85])
+			for line in lines:
+				if line < np.exp(logLam1)[-1]:
+					plt.axvspan(line-10., line+10., color='gray', alpha=0.25)
+			plt.fill_between(np.exp(logLam1), self.spectrum_norm-np.sqrt(noise),self.spectrum_norm+np.sqrt(noise), color='r', alpha=0.8)
+			plt.plot(np.exp(logLam1), self.spectrum_norm, 'k-')
+			plt.xlabel(r'$\lambda (\AA)$', fontsize=14)
+			plt.ylabel(r'Normalized flux', fontsize=14)
+			plt.xlim(3500,5100)
+
+			plt.savefig('figures/'+self.galaxyname+'/'+'intspec_norm.png', bbox_inches='tight') 
+			plt.show()
+
 		return np.asarray([pp.sol[0], pp.sol[1], pp.error[0]*np.sqrt(pp.chi2), pp.error[1]*np.sqrt(pp.chi2)]), np.exp(logLam1), pp.bestfit, galaxy, noise
 
 	# TODO: Compute integrated stellar abundances???
 
-	# TODO: Compute integrated emission-line fluxes
+	def reddening(self, verbose=False):
+		""" Compute and apply reddening correction to spectrum.
 
-	# TODO: Compute integrated gas-phase metallicity
+			Arguments:
+				plot (bool): if 'True', make diagnostic plots
+		"""
 
-def getsystvel(galaxyname, folder='/raid/madlr/voids/analysis/stackedcubes/'):
-	""" Run full pipeline to get systemic stellar kinematics.
+		print('Computing Balmer decrement...')
+
+		try:
+			data_norm = self.spectrum_norm
+			kinematics_wvl = self.kinematics_wvl
+		except AttributeError:
+			data_norm = np.load('output/'+self.galaxyname+'/'+'intspec_norm.npy')
+			kinematics_wvl = np.load('output/'+self.galaxyname+'/'+'intspec_wvl.npy')
+
+		errors = np.sqrt(self.totalvar[self.goodwvl])
+
+		# Get Balmer line maps
+		resultHgamma = fitline(data_norm, kinematics_wvl, errors, 'Hgamma', plot=verbose)
+		resultHbeta = fitline(data_norm, kinematics_wvl, errors, 'Hbeta', plot=verbose)
+		#print(resultHgamma, resultHbeta)
+
+		# Compute E(B-V) using MC method to get errors
+		print('Computing E(B-V)...')
+		Niter = int(1e3)
+		ebv = np.zeros(Niter)
+		balmer0 = 0.468 # Intrinsic Hgamma/Hbeta ratio (assuming Case B recombination, T=10^4K, electron density 100/cm^3)
+		for i in tqdm(range(Niter)):
+
+			# Compute Balmer decrement
+			Hbeta = np.random.default_rng().normal(loc=resultHbeta[0], scale=resultHbeta[1])
+			Hgamma = np.random.default_rng().normal(loc=resultHgamma[0], scale=resultHgamma[1])
+			balmer = Hgamma/Hbeta
+
+			# Compute E(B-V)
+			ebv[i] = np.log10(balmer/balmer0)/(-0.4*(k_lambda(wvldict['Hgamma'])-k_lambda(wvldict['Hbeta'])))
+
+		# Compute E(B-V) mean and errors
+		ebv_mean = np.nanmean(ebv, axis=0)
+		ebv_err = np.nanstd(ebv, axis=0)
+
+		# Make test plots
+		if verbose:
+			# Compute E(B-V) from measured fluxes
+			testbalmer = resultHgamma[0]/resultHbeta[0]
+			testebv = np.log10(testbalmer/balmer0)/(-0.4*(k_lambda(wvldict['Hgamma'])-k_lambda(wvldict['Hbeta'])))[0]
+
+			# Plot histogram of MC results
+			plt.hist(ebv)
+			plt.axvline(testebv, color='r', label="Measured from original fluxes: {:.2f}".format(testebv))
+			plt.axvline(ebv_mean, color='k', linestyle='--', label="Mean: {:.2f}".format(ebv_mean))
+			plt.axvspan(ebv_mean-ebv_err,ebv_mean+ebv_err, color='gray', alpha=0.25, label=r"$\sigma$: {:.2f}".format(ebv_err))
+			plt.xlabel('E(B-V)')
+			#plt.savefig('figures/'+self.galaxyname+'/intspec_EBVtest.png', bbox_inches='tight')
+			plt.legend(loc='best')
+			plt.show()
+
+		# Apply reddening correction if E(B-V) isn't unreasonable
+		print('Applying reddening correction...')
+		if np.isfinite(ebv_mean) and ebv_mean > 0. and ebv_mean < 1.:
+
+			# Apply reddening correction
+			Alam = k_lambda(kinematics_wvl)*ebv_mean
+			self.data_dered = data_norm/np.power(10.,(Alam/(-2.5)))
+			self.errs_dered = errors/np.power(10.,(Alam/(-2.5)))
+
+		else:
+			self.data_dered = np.copy(data_norm)
+			self.errs_dered = np.copy(errors)
+			print("E(B-V) value ({:.2f}) is sus! No reddening correction applied.".format(ebv_mean))
+
+		# Save de-reddened spectrum
+		np.save('output/'+self.galaxyname+'/intspec_dered', self.data_dered)
+		np.save('output/'+self.galaxyname+'/intspec_errs', self.errs_dered)
+
+		if verbose:
+			plt.figure(figsize=(9,3))
+			plt.plot(kinematics_wvl,self.data_dered, label='De-reddened')
+			plt.plot(kinematics_wvl,data_norm, label='Original')
+			plt.xlabel(r'$\lambda (\AA)$', fontsize=16)
+			plt.ylabel('Normalized flux', fontsize=16)
+			plt.legend()
+			plt.xlim(3500,5100)
+			plt.show()
+
+		return
+
+	def metallicity_Te(self, verbose=False):
+		""" Compute electron temperature metallicities
+
+			Arguments:
+				verbose (bool): if 'True', make diagnostic plots
+		"""
+
+		print('Getting electron temperature...')
+
+		# Get de-reddened data
+		try:
+			data_norm = self.data_dered
+			errs_norm = self.errs_dered
+			kinematics_wvl = self.kinematics_wvl
+		except AttributeError:
+			data_norm = np.load('output/'+self.galaxyname+'/'+'intspec_dered.npy')
+			errs_norm = np.load('output/'+self.galaxyname+'/'+'intspec_errs.npy')
+			kinematics_wvl = np.load('output/'+self.galaxyname+'/'+'intspec_wvl.npy')
+
+		# Get line fluxes
+		resultOIII4363 = fitline(data_norm, kinematics_wvl, errs_norm, 'OIII4363', plot=verbose)
+		resultOIII4959 = fitline(data_norm, kinematics_wvl, errs_norm, 'OIII4959', plot=verbose)
+		resultOIII5007 = fitline(data_norm, kinematics_wvl, errs_norm, 'OIII5007', plot=verbose)
+		resultOII3727 = fitline(data_norm, kinematics_wvl, errs_norm, 'OII3727doublet', plot=verbose)
+		resultHbeta = fitline(data_norm, kinematics_wvl, errs_norm, 'Hbeta', plot=verbose)
+
+		if np.any(~np.isfinite([i[-1] for i in [resultOIII4363,resultOIII4959,resultOIII5007]])):
+			print('One or more of the OIII lines is not well measured. Check fluxes: ', [i[0] for i in [resultOIII4363,resultOIII4959,resultOIII5007]])
+
+		# Measure OIII electron temp using Nicholls et al. (2020) calibration
+		x = np.log10(resultOIII4363[0]/(resultOIII4959[0] + resultOIII5007[0]))  # log10(f4363/f5007)
+		Te_OIII = np.power(10., (3.3027 + 9.1917*x)/(1. + 2.092*x - 0.1503*x**2 - 0.0093*x**3))  # K
+
+		# Measure OII electron temp using Lopez-Sanchez et al. (2012)
+		Te_OII = Te_OIII + 450 - 70*np.exp((Te_OIII/5000.)**1.22)
+
+		# Compute O/H ionic ratios using Pérez-Montero (2017) analytical functions
+		# Note that these units are 12 + log(O/H)
+		tO2 = Te_OIII/1e4
+		tO = Te_OII/1e4
+		ne = 100.  # assume fixed electron density (cm^-3)
+		O2H2 = np.log10((resultOIII4959[0] + resultOIII5007[0])/resultHbeta[0]) + 6.1868 + 1.2491/tO2 - 0.5816 * np.log10(tO2)
+		OH = np.log10(resultOII3727[0]/resultHbeta[0]) + 5.887 + 1.641/tO - 0.543*np.log10(tO) + 0.000114 * ne
+
+		self.gasZ = 12. + np.log10(10.**(O2H2 - 12.) + 10.**(OH - 12.))
+		print('Gas-phase metallicity: ', self.gasZ)
+
+		return self.gasZ
+
+def integratedpipeline(galaxyname, folder='/raid/madlr/voids/analysis/stackedcubes/'):
+	""" Run full pipeline to get: 
+		- Systemic stellar kinematics
+		- Gas-phase abundances
 
 	Arguments:
-		verbose (bool): if 'True', make diagnostic plots
-		overwrite (bool): if 'True', overwrite existing data files
-		makeplots (bool): if 'True', just run the steps required to make plots
-			(note: only works if all steps have been run before!)
+		galaxyname (str): name of galaxy
+		folder (str): folder where stacked data cubes are stored
 	"""
 
 	# Open params
@@ -386,7 +638,10 @@ def getsystvel(galaxyname, folder='/raid/madlr/voids/analysis/stackedcubes/'):
 	# Open cube
 	c = Cube(galaxyname, folder=folder, verbose=param['verbose'], wcscorr=param['wcscorr'], z=param['z'], EBV=param['EBV'])
 	c.integrate(plot=False, covparams=param['covparams'])
-	c.stellarfit(plot=True)
+	c.stellarfit(plot=False)
+
+	c.reddening(verbose=False)
+	c.metallicity_Te(verbose=True)
 
 	return
 
@@ -395,7 +650,9 @@ def main():
 	c = Cube('reines65', folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/redux/stackedcubes/', verbose=False, wcscorr=[174.17801 - 174.1787083, 26.727126 - 26.7263583], z=0.0331, EBV=0.0217)
 	#c.ellipsefit()
 	c.integrate(plot=False, covparams=[0.108,1.65,80])
-	c.stellarfit(plot=True)
+	c.stellarfit(plot=False)
+	c.reddening(verbose=False)
+	c.metallicity_Te(verbose=True)
 
 	return
 
