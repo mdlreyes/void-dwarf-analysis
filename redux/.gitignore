@@ -1,0 +1,16 @@
+test/*
+figures/*
+output/*
+*fits
+*png
+cwitools
+cwitools/**
+cwitools/**/*
+vsigma*
+submit.sh
+kcwiredux_mc.py
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class

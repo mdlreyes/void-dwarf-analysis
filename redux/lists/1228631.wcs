@@ -1,0 +1,5 @@
+DATA_DIRECTORY=/raid/keck/kcwi/2020jan22/redux/
+SEARCH_DEPTH=0
+#                 ID          CRVAL1          CRVAL2     CRVAL3     CRPIX1     CRPIX2     CRPIX3
+>     kb200122_00067     153.4926846      39.7995748   3228.000       14.1       23.3        1.0
+>     kb200122_00069     153.4934167      39.8004444   3228.000       11.9       35.5        1.0
