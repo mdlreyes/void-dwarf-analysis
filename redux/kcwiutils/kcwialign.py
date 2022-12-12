@@ -430,6 +430,6 @@ def estimatecovar(galaxyname, folder='stackedcubes/old/', maskfile=None, plot=Tr
 
 if __name__ == "__main__":
 
-    #stack('reines65', 'xcor', radec=(174.1787932, 26.72628063), box=5, listdir='lists/', cubed=False)
+    stack('reines65', 'xcor', radec=(174.1787932, 26.72628063), box=5, listdir='lists/', cubed=False)
     #getdata('stackedcubes/reines65', plot=True, maskout=True)  # Make sure stacking worked, make final mask
     estimatecovar('reines65', plot=True)
