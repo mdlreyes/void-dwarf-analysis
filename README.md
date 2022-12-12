@@ -49,12 +49,19 @@ Follow the usual steps to clone the repo:
 git clone https://github.com/mdlreyes/void-dwarf-analysis.git
 ```
 
-
-<!-- USAGE EXAMPLES 
 ## Usage
 
-Use this space to show useful examples of how a project can be used. Additional screenshots, code examples and demos work well in this space. You may also link to more resources.
+The `redux` folder includes the main reduction pipeline, which is run as follows:
+* The `params` file contains reduction and plotting parameters for each of the galaxies. 
+  * The covariance parameters (alpha, beta, N) can be estimated using the CWITools framework when multiple exposures are stacked. This can also be done using the `kcwiutils` subfolder (in particular, the `kcwialign.py` script; you will need to create a list file in the `lists` subdirectory to do this).
+* The script `kcwiredux.py` can be used to run the main reduction script and to make the final plots.
+* If you would like to estimate errors on kinematic parameters using Monte Carlo error estimation (i.e., perturbing the spectra by errors, then running the reduction over many iterations), `kcwiredux_mc_mpi.py` does this, using multiprocessing to speed up the process.
 
+The `analysis` folder includes all scripts made to make plots using the kinematic properties obtained from `redux`.
+
+The Jupyter notebook `example.ipynb` shows how the plots in (de los Reyes et al., submitted) were made.
+
+<!--
 _For more examples, please refer to the [Documentation](https://example.com)_
 -->
 
