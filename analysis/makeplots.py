@@ -21,7 +21,7 @@ import cmasher as cmr
 import numpy as np
 from astropy.io import ascii
 
-def vsigma_plot(param='mass', plot_path='plots/', mass='sdss', inclination=False):
+def vsigma_plot(param='mass', plot_path='plots/', mass='sdss', inclination=False, plotline=True):
     """ Plots v/sigma as a function of another parameter
 
         Args:
@@ -72,6 +72,10 @@ def vsigma_plot(param='mass', plot_path='plots/', mass='sdss', inclination=False
             x_void = voiddata['massWISE']
             x_void_err = np.asarray([voiddata['massWISE_lo'],voiddata['massWISE_hi']])
 
+        labels = [None,None,None,None,None]
+    else:
+        labels = ['Local Group ultra-faint','Local Group satellite','Local Group isolated','Void','Field']
+
     if param=='dLstar':
         x_void = voiddata['dLstar_wise']
         x_void[x_void<-990] = 3000
@@ -95,24 +99,24 @@ def vsigma_plot(param='mass', plot_path='plots/', mass='sdss', inclination=False
     ax = plt.subplot()
 
     # Plot data from Wheeler+17
-    ax.errorbar(x_wheeler[ufd_idx], y_wheeler[ufd_idx], yerr=y_wheeler_err[:,ufd_idx], #label='Local Group ultra-faint',
+    ax.errorbar(x_wheeler[ufd_idx], y_wheeler[ufd_idx], yerr=y_wheeler_err[:,ufd_idx], label=labels[0],
                 color=plt.cm.Set2(0), linestyle='None', marker='^', markersize=8, linewidth=1, alpha=0.8)
 
-    ax.errorbar(x_wheeler[sat_idx], y_wheeler[sat_idx], yerr=y_wheeler_err[:,sat_idx], #label='Local Group satellite',
+    ax.errorbar(x_wheeler[sat_idx], y_wheeler[sat_idx], yerr=y_wheeler_err[:,sat_idx], label=labels[1],
                 color=plt.cm.Set2(1), linestyle='None', marker='s', markersize=7, linewidth=1, alpha=0.8)
 
-    ax.errorbar(x_wheeler[iso_idx], y_wheeler[iso_idx], yerr=y_wheeler_err[:,iso_idx], #label='Local Group isolated',
+    ax.errorbar(x_wheeler[iso_idx], y_wheeler[iso_idx], yerr=y_wheeler_err[:,iso_idx], label=labels[2],
                 mfc='white', mec=plt.cm.Set2(1), ecolor=plt.cm.Set2(1), linestyle='None', marker='s', markersize=8, linewidth=1)
 
     # Plot my data
-    ax.errorbar(x_void[void_idx], y_void[void_idx], xerr=x_void_err[:,void_idx], yerr=y_void_err[void_idx], #label='Void',
+    ax.errorbar(x_void[void_idx], y_void[void_idx], xerr=x_void_err[:,void_idx], yerr=y_void_err[void_idx], label=labels[3],
                mfc='white', mec=plt.cm.Dark2(2), ecolor=plt.cm.Dark2(2), linestyle='None', marker='o', markersize=8, linewidth=1)    
      
-    ax.errorbar(x_void[control_idx], y_void[control_idx], xerr=x_void_err[:,control_idx], yerr=y_void_err[control_idx], #label='Field', 
+    ax.errorbar(x_void[control_idx], y_void[control_idx], xerr=x_void_err[:,control_idx], yerr=y_void_err[control_idx], label=labels[4],
                color=plt.cm.Dark2(2), linestyle='None', marker='o', markersize=8, linewidth=1)
 
     # Do some math to get best-fit line for mass
-    if param=='mass' or param=='dLstar':
+    if param=='mass' or param=='dLstar' and plotline:
 
         Niter = 100000
         poly = np.zeros((Niter,2))
@@ -143,13 +147,17 @@ def vsigma_plot(param='mass', plot_path='plots/', mass='sdss', inclination=False
         plt.xlim(xlim)
         plt.ylim([-0.05,4.])
         plt.plot(xlim,[1,1],':k')
-        plt.plot(xlim, poly_med[0]*np.array(xlim) + poly_med[1], 'r-', label=r"Best-fit line (excluding LG ultra-faints: $y=${:.2f}$x-${:.2f})".format(poly_med[0], np.abs(poly_med[1])))
+        if plotline:
+            plt.plot(xlim, poly_med[0]*np.array(xlim) + poly_med[1], 'r-', label=r"Best-fit line (excluding LG ultra-faints: $y=${:.2f}$x-${:.2f})".format(poly_med[0], np.abs(poly_med[1])))
     if param=='dLstar':
         plt.xlabel(r'$d_{L_{\star}}$ (kpc)', fontsize=20)
         plt.xscale('log')
-        plt.xlim([10,1.5e4])
+        xlim = [10,1.5e4]
+        plt.xlim(xlim)
         plt.ylim([-0.05,4.])
         plt.plot([0,2e4],[1,1],':k')
+        if plotline:
+            plt.plot(xlim, poly_med[0]*np.array(xlim) + poly_med[1], 'r-', label=r"Best-fit line (excluding LG ultra-faints: $y=${:.2f}$x-${:.2f})".format(poly_med[0], np.abs(poly_med[1])))
     if param=='ellipticity':
         plt.xlabel(r'Ellipticity', fontsize=20)
         plt.xlim([0,0.82])
@@ -338,11 +346,6 @@ def vsigma_dist(plot_path='plots/'):
 
     # Read in data from void dwarfs
     voiddata = ascii.read('../data/sample_FINAL_new.csv').filled(-999.0)
-    #print(voiddata)
-
-    # Correct for template dispersion (~66 km/s)
-    sigma = np.sqrt(np.copy(voiddata['sigma'])**2 - 66.**2)
-    #print(np.shape(sigma))
     
     y_void = voiddata['vsigma']
     y_void_err = voiddata['vsigma_err']
@@ -384,8 +387,8 @@ def vsigma_dist(plot_path='plots/'):
 
 if __name__ == "__main__":
 
-    #vsigma_plot(param='dLstar', inclination=False)
-    vsigma_plot(param='mass', mass='wise', inclination=False)
+    vsigma_plot(param='dLstar', inclination=False, plotline=False)
+    vsigma_plot(param='mass', mass='wise', inclination=False, plotline=True)
     #vsigma_plot(param='ellipticity', inclination=False)
     #mass_metallicity()
     #dLstar_mass()
