@@ -54,10 +54,6 @@ def vsigma_plot(param='mass', plot_path='plots/', mass='sdss', inclination=False
     # Read in data from void dwarfs
     voiddata = ascii.read('../data/sample_FINAL_new.csv').filled(-999.0)
     #print(voiddata)
-
-    # Correct for template dispersion (~66 km/s)
-    sigma = np.sqrt(np.copy(voiddata['sigma'])**2 - 66.**2)
-    #print(np.shape(sigma))
     
     y_void = voiddata['vsigma']
     y_void_err = voiddata['vsigma_err']
