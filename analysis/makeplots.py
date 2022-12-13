@@ -5,8 +5,8 @@
 ######################################
 
 #Backend for python3 on mahler
-import matplotlib
-matplotlib.use('TkAgg')
+#import matplotlib
+#matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 
 # Change fonts
@@ -143,7 +143,7 @@ def vsigma_plot(param='mass', plot_path='plots/', mass='sdss', inclination=False
         plt.xlim(xlim)
         plt.ylim([-0.05,4.])
         plt.plot(xlim,[1,1],':k')
-        plt.plot(xlim, poly_med[0]*np.array(xlim) + poly_med[1], 'r-', label=r'Best-fit line (excluding LG ultra-faints: $y=0.23x-0.93$')
+        plt.plot(xlim, poly_med[0]*np.array(xlim) + poly_med[1], 'r-', label=r"Best-fit line (excluding LG ultra-faints: $y=${:.2f}$x-${:.2f})".format(poly_med[0], np.abs(poly_med[1])))
     if param=='dLstar':
         plt.xlabel(r'$d_{L_{\star}}$ (kpc)', fontsize=20)
         plt.xscale('log')
@@ -171,7 +171,7 @@ def vsigma_plot(param='mass', plot_path='plots/', mass='sdss', inclination=False
         param = param+'_inclination'
 
     plt.savefig((plot_path+'vsigma_'+param+'.pdf'), bbox_inches='tight')
-    plt.show()
+    #plt.show()
 
     return
 
@@ -384,8 +384,8 @@ def vsigma_dist(plot_path='plots/'):
 
 if __name__ == "__main__":
 
-    vsigma_plot(param='dLstar', inclination=False)
-    #vsigma_plot(param='mass', mass='wise', inclination=True)
+    #vsigma_plot(param='dLstar', inclination=False)
+    vsigma_plot(param='mass', mass='wise', inclination=False)
     #vsigma_plot(param='ellipticity', inclination=False)
     #mass_metallicity()
     #dLstar_mass()

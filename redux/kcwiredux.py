@@ -5,9 +5,10 @@
 ######################################
 
 #Backend for python3 on mahler
-import matplotlib
+#import matplotlib
 #matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+#plt.interactive('on')
 
 # Change fonts
 from matplotlib import rc
@@ -159,7 +160,7 @@ class Cube:
 			ax = plt.subplot(projection=self.wcs,slices=('x', 'y', 50))
 			plt.imshow(totaldata)
 			plt.colorbar()
-			plt.show()
+			#plt.show()
 
 			# Plot example spectrum
 			plt.figure(figsize=(12,5))
@@ -174,7 +175,7 @@ class Cube:
 			# Plot error
 			testerror = np.sqrt(self.var[:,idx,idy])
 			plt.fill_between(self.wvl_zcorr,self.data[:,idx,idy]-testerror,self.data[:,idx,idy]+testerror,facecolor='C0',alpha=0.5,edgecolor='None')
-			plt.show()
+			#plt.show()
 
 	def binspaxels(self, params=[1., 1., 60.], verbose=False, targetsn=10., emline=None):
 		""" Bin spaxels spatially to increase S/N
@@ -210,7 +211,7 @@ class Cube:
 			if verbose:
 				plt.imshow(sntest)
 				plt.colorbar()
-				plt.show()
+				#plt.show()
 			np.save('output/'+self.galaxyname+'/contsnr', np.ma.getdata(sntest))
 		
 		else:
@@ -246,7 +247,7 @@ class Cube:
 			if verbose:
 				plt.imshow(sntest)
 				plt.colorbar()
-				plt.show()
+				#plt.show()
 			np.save('output/'+self.galaxyname+'/'+emline+'snr', np.ma.getdata(sntest))
 
 		# Prep data for binning by making lists that vorbin can read
@@ -273,7 +274,7 @@ class Cube:
 		self.binNum, xNode, yNode, xBar, yBar, self.sn, nPixels, scale = voronoi_2d_binning(self.x, self.y, s, n, targetsn, sn_func=snfunc, plot=1, quiet=1)
 		if verbose:
 			plt.tight_layout()
-			plt.show()
+			#plt.show()
 		else:
 			plt.close()
 
@@ -358,7 +359,7 @@ class Cube:
 			im=ax.imshow(np.ma.sum(stacked_data[self.goodwvl_sn,:,:], axis=0), vmin=0)
 			fig.colorbar(im, ax=ax)
 			plt.savefig('figures/'+self.galaxyname+'/bintest.pdf', bbox_inches='tight')
-			plt.show()
+			#plt.show()
 
 		return
 
@@ -461,7 +462,7 @@ class Cube:
 				  goodpixels=goodPixels, plot=plot, moments=2,
 				  degree=6, vsyst=dv, clean=False, quiet=True)
 		if verbose:
-			#plt.show()
+			##plt.show()
 			plt.close()
 
 			print("Formal errors:")
@@ -542,7 +543,7 @@ class Cube:
 						plt.ylim(0.5,1.5)
 						plt.xlim(3700,5100)
 						plt.savefig('figures/'+self.galaxyname+'/'+'centerspec.pdf', bbox_inches='tight') 
-						plt.show()
+						#plt.show()
 
 					if binID==15:
 						plt.figure(figsize=(9,3))
@@ -559,7 +560,7 @@ class Cube:
 						plt.ylim(0.5,1.5)
 						plt.xlim(3700,5100)
 						plt.savefig('figures/'+self.galaxyname+'/'+'outerspec.pdf', bbox_inches='tight') 
-						plt.show()
+						#plt.show()
 
 				# Save data from each bin
 				self.vel[binID] = params[0]
@@ -719,9 +720,9 @@ class Cube:
 				plt.xlim(3500,5100)
 
 				# Plot error
-				plt.show()
+				#plt.show()
 
-				plt.show()
+				#plt.show()
 
 		return
 
@@ -818,7 +819,7 @@ class Cube:
 
 				plt.savefig('figures/'+self.galaxyname+'/'+plotname+'.pdf', bbox_inches='tight') 
 				#plt.show()
-				plt.close()
+				#plt.close()
 
 			return copy
 
@@ -869,7 +870,7 @@ class Cube:
 		fig.tight_layout(pad=4.0)
 		plt.savefig('figures/kinematics/'+self.galaxyname+'.pdf', bbox_inches='tight')
 		plt.show()
-		plt.close()
+		#plt.close()
 
 		return
 
@@ -1005,7 +1006,7 @@ class Cube:
 			fig, ax = plt.subplots()
 			im = ax.imshow(snr, cmap='viridis', interpolation='nearest')
 			fig.colorbar(im, ax=ax)
-			plt.show()
+			#plt.show()
 
 		else:
 			# Loop over all bins
@@ -1148,7 +1149,7 @@ class Cube:
 			plt.axvline(testebv[testidx,testidy], color='r')
 			plt.axvline(ebv_mean[testidx,testidy], color='k', linestyle='--')
 			plt.axvspan(ebv_mean[testidx,testidy]-ebv_err[testidx,testidy],ebv_mean[testidx,testidy]+ebv_err[testidx,testidy], color='gray', alpha=0.25)
-			plt.show()
+			#plt.show()
 
 			# Test Balmer line calculations
 			'''
@@ -1169,7 +1170,7 @@ class Cube:
 			im=ax.imshow(balmer, vmax=0.8)
 			fig.colorbar(im, ax=ax)
 
-			plt.show()
+			#plt.show()
 			'''
 
 			# Test E(B-V)
@@ -1191,7 +1192,7 @@ class Cube:
 			fig.colorbar(im, ax=ax)
 
 			plt.savefig('figures/'+self.galaxyname+'/EBVtest.png', bbox_inches='tight')
-			plt.show()
+			#plt.show()
 
 		return
 		print('Applying reddening correction to all spaxels...')
@@ -1228,7 +1229,7 @@ class Cube:
 			plt.ylabel('Flux', fontsize=16)
 			plt.legend()
 			plt.xlim(3500,5100)
-			plt.show()
+			#plt.show()
 
 		np.save('output/'+self.galaxyname+'/data_dered', self.data_dered)
 

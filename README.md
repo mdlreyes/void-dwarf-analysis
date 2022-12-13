@@ -81,7 +81,7 @@ Contributions are what make the open source community such an amazing place to b
 <!-- CONTACT -->
 ## Contact
 
-Mia de los Reyes - [@MiaDoesAstro](https://twitter.com/MiaDoesAstro) - mdelosre@caltech.edu
+Mia de los Reyes - [@MiaDoesAstro](https://twitter.com/MiaDoesAstro) - mdlreyes@stanford.edu
 
 Project Link: [https://github.com/mdlreyes/void-dwarf-analysis](https://github.com/mdlreyes/void-dwarf-analysis)
 
