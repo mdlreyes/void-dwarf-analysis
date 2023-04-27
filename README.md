@@ -59,7 +59,7 @@ The `redux` folder includes the main reduction pipeline, which is run as follows
 
 The `analysis` folder includes all scripts made to make plots using the kinematic properties obtained from `redux`.
 
-The Jupyter notebook `example.ipynb` shows how the plots in (de los Reyes et al., submitted) were made.
+The Jupyter notebook `example.ipynb` shows how the plots in (de los Reyes et al., submitted) were made. (`example.html` and `example.pdf` provide alternative formats to view this notebook.)
 
 <!--
 _For more examples, please refer to the [Documentation](https://example.com)_

@@ -22,6 +22,13 @@ import os
 from params import params
 import cmasher as cmr
 
+# Astropy packages for plotting
+import astropy.units as u
+from astropy.visualization.wcsaxes import add_scalebar
+from astropy.cosmology import FlatLambdaCDM  # needed to compute redshifts
+cosmo = FlatLambdaCDM(H0=67.4, Om0=0.315)  # using Planck (2018) params
+from astropy.coordinates import Distance
+
 # Packages for binning
 import kcwiutils.kcwialign as kcwialign
 import vorbin
@@ -34,6 +41,7 @@ import ppxf.ppxf_util as util
 from os import path
 import glob
 from scipy import ndimage
+from scipy import stats
 
 # Packages for emission line fitting
 from astropy.modeling import models, fitting
@@ -473,7 +481,7 @@ class Cube:
 
 		return np.asarray([pp.sol[0], pp.sol[1], pp.error[0]*np.sqrt(pp.chi2), pp.error[1]*np.sqrt(pp.chi2), pp.chi2]), np.exp(logLam1), pp.bestfit, galaxy, noise
 
-	def stellarkinematics(self, verbose=False, removekinematics=True, overwrite=False, snr_mask=1, plottest=False, vsigma=True):
+	def stellarkinematics(self, verbose=False, removekinematics=True, overwrite=False, snr_mask=1, plottest=False, vsigma=True, plotveldist=False):
 		""" Do stellar kinematics fitting with pPXF. Note: must run prepstellarfit() first!
 
 			Arguments:
@@ -606,19 +614,6 @@ class Cube:
 			self.vel_err = np.loadtxt('output/new/'+self.galaxyname+'/vel_err.out')
 			self.veldisp_err = np.loadtxt('output/new/'+self.galaxyname+'/veldisp_err.out')
 			self.velmask = np.loadtxt('output/new/'+self.galaxyname+'/velmask.out')
-			
-			# Compute vmax
-			goodidx = np.where((self.vel_err > 0.) & (self.veldisp_err > 0))
-			maxpercentile = np.linspace(95,100,100)
-			minpercentile = np.linspace(0,5,100)
-			maxv = np.median([np.percentile(self.vel[goodidx], 95), np.max(self.vel[goodidx])])
-			minv = np.median([np.min(self.vel[goodidx]), np.percentile(self.vel[goodidx], 5)]) #, minpercentile))
-			maxv_err = np.max(self.vel[goodidx]) - np.percentile(self.vel[goodidx], 95)
-			minv_err = np.percentile(self.vel[goodidx], 5) - np.min(self.vel[goodidx])
-
-			vmax = 0.5*(maxv - minv)
-			vmax_err = 0.5*np.sqrt(maxv_err**2. + minv_err**2.)
-			print(r"vmax: {:.2f} \pm {:.2f}".format(vmax, vmax_err))
 
 			# Compute sigma
 			goodidx = np.where(~np.isnan(self.vel) & ~np.isnan(self.veldisp) & (self.veldisp_err > 1e-5) & (self.veldisp > 1.)) # & (self.veldisp > self.veldisp_err))
@@ -627,11 +622,91 @@ class Cube:
 			sigma = np.average(self.veldisp[goodidx], weights=flux[goodidx])
 			sigma_err = np.sqrt(np.sum( self.veldisp_err[goodidx]**2. * (flux[goodidx]/np.sum(flux[goodidx]))**2. ))
 			print("sigma: {:.2f} \pm {:.2f}".format(sigma, sigma_err))
+			
+			# Compute vmax
+			if self.galaxyname=='2502521':
+				goodidx = np.where((self.vel_err > 0.) & (self.veldisp_err > 0) & (self.vel_err < 350.) & (self.velmask==True) & (self.vel_err < np.max(np.abs(self.vel))))
+			else:
+				goodidx = np.where((self.vel_err > 0.) & (self.veldisp_err > 0) & (self.velmask==1) & (self.vel_err < np.max(np.abs(self.vel))))
+			
+			Niter = 10000
+			vmaxes = np.zeros(Niter)
+			vsigmas = np.zeros(Niter)
+			for iteration in range(Niter):
+				# Compute vmax
+				velocities = np.random.default_rng().normal(loc=self.vel[goodidx], scale=self.vel_err[goodidx])
+				maxvel = np.median([np.percentile(velocities, 95), np.max(velocities)])
+				minvel = np.median([np.min(velocities), np.percentile(velocities, 5)])
+				vmaxes[iteration] = 0.5*(maxvel - minvel)
 
-			# Compute v/sigma
-			vsigma = vmax/sigma
-			vsigma_err = np.sqrt((vmax_err/vmax)**2. + (sigma_err/sigma)**2.) * vsigma
-			print("vsigma: {:.2f} \pm {:.2f}".format(vsigma, vsigma_err))
+				# Compute v/sigma
+				newsigma = np.random.default_rng().normal(loc=sigma, scale=sigma_err)
+				vsigmas[iteration] = vmaxes[iteration]/newsigma
+
+			# Plot vmax distribution and compute global vmax
+			controlnames = np.asarray(['control757','control801','control872','control842','PiscesA','PiscesB','control751','control775','control658'])
+			fullnames = np.asarray(['AGC 112504','LEDA 3524','IC 0225','LEDA 101427','Pisces A','Pisces B','UM 240','SHOC 150','SDSS J0133+1342'])
+
+			if self.galaxyname in controlnames:
+				name = fullnames[np.where(controlnames==self.galaxyname)[0]][0]
+			else:
+				name = self.galaxyname
+
+			goodvsigma = np.where((vsigmas > 0.) & (vsigmas < 5.))[0]
+			vsigmas = vsigmas[goodvsigma]
+
+			def plotsmoothhist(array, filename):
+				fig = plt.figure(figsize=(7,5))
+				ax = fig.add_subplot(111)
+				hist, bins, patches = plt.hist(array, bins=50, density=True)
+
+				# Compute global vmax
+				smoothhist = stats.gaussian_kde(array)
+				max = bins[np.argmax(smoothhist(bins))]
+				err_up = np.percentile(array, 84)
+				err_lo = np.percentile(array, 16)
+
+				plt.plot(bins, smoothhist(bins), 'b-')
+				plt.axvline(max, color='k', ls='--')
+				plt.axvspan(err_lo, err_up, color='r', alpha=0.3)
+				if filename=='vmax':
+					plt.xlabel(r'$v_{\mathrm{max}}$ (km/s)', fontsize=20)
+				if filename=='vsigma':
+					plt.xlabel(r'$v_{\mathrm{rot}}/\sigma_{\star}$', fontsize=20)
+					plt.xlim(0,5)
+				plt.ylabel(r'Normalized $N$', fontsize=20)
+				plt.text(0.75, 0.9, name, fontsize=18, fontweight='extra bold', transform=ax.transAxes, bbox=dict(alpha=0.5, facecolor='white', edgecolor='black'))
+				plt.yticks(fontsize=14)
+				plt.xticks(fontsize=14)
+				plt.savefig('figures/distributions/'+filename+'_'+self.galaxyname+'.pdf', bbox_inches='tight')
+				plt.close()
+				#plt.show()
+
+				return max, err_up-max, max-err_lo
+
+			vmax, vmax_up, vmax_lo = plotsmoothhist(vmaxes, 'vmax')
+			vsigma, vsigma_up, vsigma_lo = plotsmoothhist(vsigmas, 'vsigma')
+			print(r"vmax: {:.2f} + {:.2f} - {:.2f}".format(vmax, vmax_up, vmax_lo))
+			print(r"vsigma: {:.2f} + {:.2f} - {:.2f}".format(vsigma, vsigma_up, vsigma_lo))
+
+			# Plot velocity distribution
+			'''
+			fig = plt.figure(figsize=(7,5))
+			ax = fig.add_subplot(111)
+			ax.hist(self.vel, bins=10, color='cornflowerblue')
+			plt.axvline(maxv, linestyle='--', color='r')
+			plt.axvline(minv, linestyle='--', color='r')
+			plt.axvspan(maxv - maxv_err_lo, maxv + maxv_err_up, color='r', alpha=0.3)
+			plt.axvspan(minv - minv_err_lo, minv + minv_err_up, color='r', alpha=0.3)
+			plt.axvline(0, linestyle=':', lw=2, color='k')
+			plt.xlabel(r'$v_{i}$', fontsize=20)
+			plt.ylabel(r'$N$', fontsize=20)
+			plt.text(0.1, 0.9, name, fontsize=18, fontweight='extra bold', transform=ax.transAxes, bbox=dict(alpha=0.5, facecolor='white', edgecolor='black'))
+			plt.yticks(fontsize=14)
+			plt.xticks(fontsize=14)
+			plt.savefig('figures/veldist/'+self.galaxyname+'.pdf', bbox_inches='tight')
+			plt.close()
+			'''
 
 		# Remove best-fit stellar template from each spaxel
 		if removekinematics:
@@ -759,7 +834,7 @@ class Cube:
 			unpacked_array = np.zeros_like(self.data[0,:,:])
 
 			# Loop over all bins
-			for binID in range(len(self.bins)):
+			for binID in range(len(self.bins)-1): #-1 (have to add for 955106)
 
 				# Get all IDs in that bin
 				idx = np.where(self.binNum==self.bins[binID])[0]
@@ -768,16 +843,16 @@ class Cube:
 				xarray = np.asarray(self.x[idx])
 				yarray = np.asarray(self.y[idx])
 
-				# Loop over all pixels in the bin and subtract best-fit stellar continuum
+				# Loop over all pixels in the bin
 				for i in range(len(xarray)):
 
 					# Check if any spaxels are masked
-					if np.all(self.mask_cropped[:,yarray[i], xarray[i]]==False):
-						unpacked_array[yarray[i],xarray[i]] = array[binID]	
+					#if np.all(self.mask_cropped[:,yarray[i], xarray[i]]==False):
+					unpacked_array[yarray[i],xarray[i]] = array[binID]	
 
-					else:
-						print(binID)
-						unpacked_array[yarray[i],xarray[i]]	= np.nan			
+					#else:
+					#	print(binID)
+					#	unpacked_array[yarray[i],xarray[i]]	= np.nan			
 
 			return unpacked_array
 
@@ -787,15 +862,18 @@ class Cube:
 			copy = np.copy(unpack_binneddata(array))
 
 			# Do S/N cut on data
-			if error is not None and sn is not None:
-				error = np.copy(unpack_binneddata(error))
-				idx = np.where(np.abs(copy/error) < sn)
-				copy[idx] = np.nan
+			#if error is not None and sn is not None:
+			#	error = np.copy(unpack_binneddata(error))
+			#	idx = np.where(np.abs(copy/error) < sn)
+			#	copy[idx] = np.nan
 
 			# Mask any bad data
 			if mask is not None:
 				mask = np.array(unpack_binneddata(mask), dtype=bool)
 				copy[~mask] = np.nan
+
+				mask = np.array(unpack_binneddata(self.vel_err) > np.max(np.abs(self.vel)))
+				copy[mask] = np.nan
 
 			# Mask bad measurements of sigma
 			if plotname=='veldisp':
@@ -803,6 +881,11 @@ class Cube:
 				copy[mask] = np.nan
 
 				mask = np.array(copy < 1)
+				copy[mask] = np.nan
+
+			# Remove bad bin from 2502521
+			if self.galaxyname=='2502521':
+				mask = np.array(unpack_binneddata(self.vel_err) > 350.)
 				copy[mask] = np.nan
 
 			if showplot:
@@ -818,14 +901,15 @@ class Cube:
 				cb.set_label(label=title, size=18, weight='bold')
 
 				plt.savefig('figures/'+self.galaxyname+'/'+plotname+'.pdf', bbox_inches='tight') 
-				#plt.show()
+				plt.show()
 				#plt.close()
 
 			return copy
 
 		if ploterrs:
+			plot(vel, title=r'$V$ (km/s)', plotname='vel', mask=velmask, showplot=True)
 			plot(vel_err, title=r'$V$ error (km/s)', plotname='velerr', mask=velmask, showplot=True)
-			plot(veldisp_err, title=r'$\sigma$ error (km/s)', plotname='veldisperr', mask=velmask, showplot=True)
+			#plot(veldisp_err, title=r'$\sigma$ error (km/s)', plotname='veldisperr', mask=velmask, showplot=True)
 
 		controlnames = np.asarray(['control757','control801','control872','control842','PiscesA','PiscesB','control751','control775','control658'])
 		fullnames = np.asarray(['AGC 112504','LEDA 3524','IC 0225','LEDA 101427','Pisces A','Pisces B','UM 240','SHOC 150','SDSS J0133+1342'])
@@ -846,6 +930,27 @@ class Cube:
 		cb = fig.colorbar(im, ax=ax0, pad=0.) #, shrink=0.9)
 		cb.set_label(label='Flux', size=18, weight='bold')
 		ax0.text(0.1, 0.9, name, fontsize=18, fontweight='extra bold', transform=ax0.transAxes, bbox=dict(alpha=0.5, facecolor='white', edgecolor='black'))
+
+		# Test physical size of region
+		test_angle = cosmo.angular_diameter_distance(self.z)
+		testdist = test_angle.to(u.kpc)/206265.
+		print('test', 20*testdist, 16.5*testdist)  # kpc / arcsec
+
+		# Create scalebar 
+		distance = Distance(z=self.z, cosmology=cosmo).to(u.kpc)
+		if (testdist*16.5).value < 1:
+			scalebar_length = 100 * u.pc 
+			scalebar_label = "100 pc"
+		else:
+			scalebar_length = 1 * u.kpc
+			scalebar_label = "1 kpc"
+		scalebar_angle = (scalebar_length / distance).to(u.deg, equivalencies=u.dimensionless_angles())
+
+		test_dist =  cosmo.arcsec_per_kpc_proper(self.z)
+		#print('test', test_dist)  # arcsec per kpc
+
+		# Add a scale bar
+		add_scalebar(ax0, scalebar_angle, label=scalebar_label, color="black")
 
 		# Plot velocity
 		vcopy = plot(vel, error=vel_err, limits=[-vellimit,vellimit], cmap='coolwarm', title=r'$V$ (km/s)', mask=velmask, plotname='vel')
@@ -869,8 +974,8 @@ class Cube:
 
 		fig.tight_layout(pad=4.0)
 		plt.savefig('figures/kinematics/'+self.galaxyname+'.pdf', bbox_inches='tight')
-		plt.show()
-		#plt.close()
+		#plt.show()
+		plt.close()
 
 		return
 
@@ -1290,7 +1395,9 @@ def runredux(galaxyname, folder='/raid/madlr/voids/analysis/stackedcubes/', make
 
 	if not makeplots:
 		# Do continuum fitting to get stellar kinematics
-		c.stellarkinematics(overwrite=False, plottest=True, removekinematics=False, snr_mask=param['snr_mask'], verbose=param['verbose'], vsigma=True)
+		c.stellarkinematics(overwrite=True, plottest=True, removekinematics=False, snr_mask=param['snr_mask'], verbose=param['verbose'], vsigma=True)
+	else:
+		c.stellarkinematics(overwrite=False, plottest=True, removekinematics=False, snr_mask=param['snr_mask'], verbose=param['verbose'], vsigma=True, plotveldist=True)
 
 	# Make kinematics plots
 	c.plotkinematics(vellimit=param['vellimit'], veldisplimit=param['veldisplimit'], ploterrs=False)
@@ -1316,7 +1423,7 @@ def runallgalaxies():
 	# Run reduction pipeline for each galaxy
 	for galaxy in galaxylist:
 		try:
-			runredux(galaxy, folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/redux/stackedcubes/')
+			runredux(galaxy, folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/redux/stackedcubes/', makeplots=True)
 		except:
 			print('Failed on '+galaxy)
 
@@ -1326,7 +1433,7 @@ def main():
 
 	#runallgalaxies()
 
-	runredux('reines65', folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/redux/stackedcubes/')
+	runredux('955106', folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/redux/stackedcubes/', makeplots=True)
 
 	return
 

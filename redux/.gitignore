@@ -9,6 +9,7 @@ cwitools/**/*
 vsigma*
 submit.sh
 kcwiredux_mc.py
+paper
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

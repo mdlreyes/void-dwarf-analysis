@@ -158,7 +158,7 @@ params = \
         'snr_mask': snr_mask,
         'instdisp': False,
         'vellimit': 70,
-        'veldisplimit': [10,45]
+        'veldisplimit': [10,60]
     },
 '866934': 
     {
@@ -256,7 +256,7 @@ params = \
         'snr_mask': snr_mask,
         'instdisp': False,
         'vellimit': 20,
-        'veldisplimit': [0,150]
+        'veldisplimit': [0,60]
     },
 '1280160': 
     {

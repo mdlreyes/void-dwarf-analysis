@@ -33,6 +33,16 @@ def dist(c1,z1,c2,z2):
     #print('Separation', sep.to(u.kpc))
     return sep.to(u.kpc)
 
+def dist_onsky(c1,c2,z):
+    c1 = SkyCoord(c1[0]*u.deg, c1[1]*u.deg, frame='icrs')
+    c2 = SkyCoord(c2[0]*u.deg, c2[1]*u.deg, frame='icrs')
+
+    theta = c1.separation(c2).arcsecond * u.arcsec
+    d_A = cosmo.angular_diameter_distance(z=z)
+    onskydist = (theta*d_A).to(u.kpc, u.dimensionless_angles())
+
+    return onskydist
+
 def computemag(mag,z2):
     d2 = Distance(z=z2, cosmology=cosmo)
     absmag = mag - 5*np.log10(d2.to(u.kpc)/(1.*u.kpc))
@@ -70,15 +80,17 @@ def computeBellmass(g,r,z):
     return logMstar
 
 if __name__=="__main__":
-    coord = '00 25 07.43	+00 18 45.63'
+    coord = '02 26 28.29	+01 09 37.92'
     c1 = coords_to_deg(coord)
-    z1 = 0.0109063
+    z1 = 0.00513761
 
     sqlfile = ascii.read('sql.csv')
+    dist2d = np.zeros(len(sqlfile['specObjID']))
     dist3d = np.zeros(len(sqlfile['specObjID']))
     for i in range(len(sqlfile['specObjID'])):
         c2 = (sqlfile['ra'][i], sqlfile['dec'][i])
         z2 = sqlfile['redshift'][i]
+        dist2d[i] = dist_onsky(c1,c2,z1).value
         dist3d[i] = dist(c1,z1,c2,z2).value
 
     # Find first minimum
@@ -92,6 +104,8 @@ if __name__=="__main__":
     # Correct the original coordinates, then look for nearest neighbor
     c1 = (sqlfile['ra'][minidx],sqlfile['dec'][minidx])
     z1 = sqlfile['redshift'][minidx]
+    dist2d_Lstar = np.zeros(len(sqlfile['specObjID']))
+    dist2d_Lstar_wise = np.zeros(len(sqlfile['specObjID']))
     dist3d_Lstar = np.zeros(len(sqlfile['specObjID']))
     dist3d_Lstar_wise = np.zeros(len(sqlfile['specObjID']))
     dist3d = np.zeros(len(sqlfile['specObjID']))
@@ -103,8 +117,10 @@ if __name__=="__main__":
         z2 = sqlfile['redshift'][i]
         dist3d[i] = dist(c1,z1,c2,z2).value  # Nearest neighbor
         if computeWISEmass(sqlfile['w1_mag'][i], sqlfile['w2_mag'][i], z2) > 10.:
+            dist2d_Lstar_wise[i] = dist_onsky(c1,c2,z1).value  # Nearest massive neighbor (from WISE)
             dist3d_Lstar_wise[i] = dist(c1,z1,c2,z2).value  # Nearest massive neighbor (from WISE)
         if computeBellmass(sqlfile['g'][i], sqlfile['r'][i], z2) > 10.:
+            dist2d_Lstar[i] = dist_onsky(c1,c2,z1).value  # Nearest massive neighbor (from WISE)
             dist3d_Lstar[i] = dist(c1,z1,c2,z2).value  # Nearest massive neighbor (from Bell+03)
 
         #mass_wise[i] = computeWISEmass(sqlfile['w1_mag'][i], sqlfile['w2_mag'][i], z2)
@@ -112,6 +128,8 @@ if __name__=="__main__":
     print('dnearest', np.min(dist3d[dist3d > 0.]))
     print('dLstar', np.min(dist3d_Lstar[dist3d_Lstar > 0.]))
     print('dLstar_wise', np.min(dist3d_Lstar_wise[dist3d_Lstar_wise > 0.]))
+    print('proj_dLstar', np.min(dist2d_Lstar[dist2d_Lstar > 0.]))
+    print('proj_dLstar_wise', np.min(dist2d_Lstar_wise[dist2d_Lstar_wise > 0.]))
 
     '''
     masses = np.concatenate((mass_wise, mass_bell))

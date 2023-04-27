@@ -15,13 +15,19 @@ from matplotlib import rc
 rc('font',**{'family':'serif','serif':['Palatino']})
 rc('text', usetex=True)
 
-import cmasher as cmr
+# Astropy packages
+import astropy.units as u
+from astropy.cosmology import FlatLambdaCDM  # needed to compute redshifts
+cosmo = FlatLambdaCDM(H0=67.4, Om0=0.315)  # using Planck (2018) params
+from astropy.coordinates import Distance
 
 # Import other packages
 import numpy as np
 from astropy.io import ascii
+import cmasher as cmr
+import pandas as pd
 
-def vsigma_plot(param='mass', plot_path='plots/', mass='sdss', inclination=False, plotline=True):
+def vsigma_plot(param='mass', plot_path='plots/', mass='sdss', inclination=False, plotline=True, onsky=False):
     """ Plots v/sigma as a function of another parameter
 
         Args:
@@ -54,9 +60,12 @@ def vsigma_plot(param='mass', plot_path='plots/', mass='sdss', inclination=False
     # Read in data from void dwarfs
     voiddata = ascii.read('../data/sample_FINAL_new.csv').filled(-999.0)
     #print(voiddata)
+
+    vmax_version = 'mc'
     
-    y_void = voiddata['vsigma']
-    y_void_err = voiddata['vsigma_err']
+    y_void = voiddata['vsigma_'+vmax_version]
+    y_void_err = np.vstack((voiddata['vsigma_'+vmax_version+'_err_lo'],voiddata['vsigma_'+vmax_version+'_err_up']))
+    print(np.shape(y_void_err))
 
     #y_void_err_lowerlim = y_void_lowerlim * np.sqrt((voiddata['v_Binney_err']/voiddata['v_Binney'])**2. + (voiddata['sigma_Binney_err']/voiddata['sigma_Binney'])**2.)
 
@@ -68,12 +77,15 @@ def vsigma_plot(param='mass', plot_path='plots/', mass='sdss', inclination=False
             x_void = voiddata['massWISE']
             x_void_err = np.asarray([voiddata['massWISE_lo'],voiddata['massWISE_hi']])
 
-        labels = [None,None,None,None,None]
+        labels = [None,None,None,None,None,None]
     else:
-        labels = ['Local Group ultra-faint','Local Group satellite','Local Group isolated','Void','Field']
+        labels = ['Local Group ultra-faint','Local Group satellite','Local Group isolated','Void','Field','Larger than KCWI FoV']
 
     if param=='dLstar':
-        x_void = voiddata['dLstar_wise']
+        if onsky:
+            x_void = voiddata['projdLstar_wise']
+        else:
+            x_void = voiddata['dLstar_wise']
         x_void[x_void<-990] = 3000
         x_void_err = np.zeros((2,len(x_void)))
 
@@ -81,8 +93,13 @@ def vsigma_plot(param='mass', plot_path='plots/', mass='sdss', inclination=False
         x_void = voiddata['ellipticity']
         x_void_err = np.zeros((2,len(x_void)))
 
+    if param=='redshift':
+        x_void = voiddata['z']
+        x_void_err = np.zeros((2,len(x_void)))
+
     # Make masks for void data
-    good_idx = [True if ~np.any(np.isclose([x_void[i], voiddata['vmax'][i], voiddata['sigma'][i]], -999)) and y_void[i] > 0. else False for i in range(len(x_void))]
+    extended_idx = [True if (voiddata['ID'][i] in ['1228631', 'Pisces A', 'Pisces B', 'control872']) else False for i in range(len(x_void))]
+    good_idx = [True if ~np.any(np.isclose([x_void[i], voiddata['vmax_'+vmax_version][i], voiddata['sigma'][i]], -999)) and y_void[i] > 0. else False for i in range(len(x_void))]
     void_idx = [True if (voiddata['Type'][i]=='void' and good_idx[i]) else False for i in range(len(x_void))]
     control_idx = [True if (voiddata['Type'][i]=='control' and good_idx[i]) else False for i in range(len(x_void))]
 
@@ -90,26 +107,38 @@ def vsigma_plot(param='mass', plot_path='plots/', mass='sdss', inclination=False
     if inclination:
         y_void /= np.sin(voiddata['inclination_rad'])
 
+    # Try messing with averaging
+    #avg_factor = np.zeros(len(voiddata['z']))
+    test_angle = (cosmo.angular_diameter_distance(voiddata['z']).to(u.kpc)/206265).value
+    avg_factor = test_angle/np.min(test_angle)
+    avg_factor = (avg_factor)**(1/4.)
+    #print(avg_factor)
+    #y_void *= 2
+
     # Make figure
     fig = plt.figure(figsize=(10,5))
     ax = plt.subplot()
 
     # Plot data from Wheeler+17
-    ax.errorbar(x_wheeler[ufd_idx], y_wheeler[ufd_idx], yerr=y_wheeler_err[:,ufd_idx], label=labels[0],
-                color=plt.cm.Set2(0), linestyle='None', marker='^', markersize=8, linewidth=1, alpha=0.8)
+    if param != 'redshift':
+        ax.errorbar(x_wheeler[ufd_idx], y_wheeler[ufd_idx], yerr=y_wheeler_err[:,ufd_idx], label=labels[0],
+                    color=plt.cm.Set2(0), linestyle='None', marker='^', markersize=8, linewidth=1, alpha=0.8)
 
-    ax.errorbar(x_wheeler[sat_idx], y_wheeler[sat_idx], yerr=y_wheeler_err[:,sat_idx], label=labels[1],
-                color=plt.cm.Set2(1), linestyle='None', marker='s', markersize=7, linewidth=1, alpha=0.8)
+        ax.errorbar(x_wheeler[sat_idx], y_wheeler[sat_idx], yerr=y_wheeler_err[:,sat_idx], label=labels[1],
+                    color=plt.cm.Set2(1), linestyle='None', marker='s', markersize=7, linewidth=1, alpha=0.8)
 
-    ax.errorbar(x_wheeler[iso_idx], y_wheeler[iso_idx], yerr=y_wheeler_err[:,iso_idx], label=labels[2],
-                mfc='white', mec=plt.cm.Set2(1), ecolor=plt.cm.Set2(1), linestyle='None', marker='s', markersize=8, linewidth=1)
+        ax.errorbar(x_wheeler[iso_idx], y_wheeler[iso_idx], yerr=y_wheeler_err[:,iso_idx], label=labels[2],
+                    mfc='white', mec=plt.cm.Set2(1), ecolor=plt.cm.Set2(1), linestyle='None', marker='s', markersize=8, linewidth=1)
 
     # Plot my data
-    ax.errorbar(x_void[void_idx], y_void[void_idx], xerr=x_void_err[:,void_idx], yerr=y_void_err[void_idx], label=labels[3],
+    ax.errorbar(x_void[void_idx], y_void[void_idx], xerr=x_void_err[:,void_idx], yerr=y_void_err[:,void_idx], label=labels[3],
                mfc='white', mec=plt.cm.Dark2(2), ecolor=plt.cm.Dark2(2), linestyle='None', marker='o', markersize=8, linewidth=1)    
      
-    ax.errorbar(x_void[control_idx], y_void[control_idx], xerr=x_void_err[:,control_idx], yerr=y_void_err[control_idx], label=labels[4],
+    ax.errorbar(x_void[control_idx], y_void[control_idx], xerr=x_void_err[:,control_idx], yerr=y_void_err[:,control_idx], label=labels[4],
                color=plt.cm.Dark2(2), linestyle='None', marker='o', markersize=8, linewidth=1)
+    
+    ax.errorbar(x_void[extended_idx], y_void[extended_idx], label=labels[5],
+               color='r', linestyle='None', marker='x', markersize=6, linewidth=1)
 
     # Do some math to get best-fit line for mass
     if param=='mass' or param=='dLstar' and plotline:
@@ -121,7 +150,7 @@ def vsigma_plot(param='mass', plot_path='plots/', mass='sdss', inclination=False
             # Randomly perturb data
             y_wheeler_err_avg = (y_wheeler_err[0] + y_wheeler_err[1])/2.
             y_wheeler_new = np.random.normal(y_wheeler, y_wheeler_err_avg)
-            y_void_new = np.random.normal(y_void[good_idx], y_void_err[good_idx])
+            y_void_new = np.random.normal(y_void[good_idx], np.average(y_void_err[:,good_idx], axis=0))
 
             x = np.concatenate((x_wheeler[sat_idx],x_wheeler[iso_idx],x_void[good_idx]))
             if param=='dLstar':
@@ -146,7 +175,10 @@ def vsigma_plot(param='mass', plot_path='plots/', mass='sdss', inclination=False
         if plotline:
             plt.plot(xlim, poly_med[0]*np.array(xlim) + poly_med[1], 'r-', label=r"Best-fit line (excluding LG ultra-faints: $y=${:.2f}$x-${:.2f})".format(poly_med[0], np.abs(poly_med[1])))
     if param=='dLstar':
-        plt.xlabel(r'$d_{L_{\star}}$ (kpc)', fontsize=20)
+        if onsky:
+            plt.xlabel(r'$d_{L_{\star}}$, projected (kpc)', fontsize=20)
+        else:
+            plt.xlabel(r'$d_{L_{\star}}$ (kpc)', fontsize=20)
         plt.xscale('log')
         xlim = [10,1.5e4]
         plt.xlim(xlim)
@@ -162,6 +194,10 @@ def vsigma_plot(param='mass', plot_path='plots/', mass='sdss', inclination=False
         # Plot Binney (1978) curve
         binney = np.genfromtxt('../data/binney.txt', delimiter=',')
         plt.plot(binney[:,0],binney[:,1],'k-')
+    if param=='redshift':
+        plt.xlabel(r'Redshift', fontsize=20)
+        plt.xlim([0,0.02])
+        plt.ylim([-0.05,4.])
 
     plt.legend(loc='upper left', fontsize=14, ncol=2)
     plt.ylabel(r'$v_{\mathrm{rot}}/\sigma_{\star}$', fontsize=20)
@@ -173,6 +209,9 @@ def vsigma_plot(param='mass', plot_path='plots/', mass='sdss', inclination=False
 
     if inclination:
         param = param+'_inclination'
+
+    if onsky:
+        param = param+'_onsky'
 
     plt.savefig((plot_path+'vsigma_'+param+'.pdf'), bbox_inches='tight')
     #plt.show()
@@ -380,12 +419,136 @@ def vsigma_dist(plot_path='plots/'):
 
     return
 
+def compare_1d2d(plot_path='plots/', param='vsigma'):
+    """ Make plots comparing kinematics measured from IFU vs (mock) long-slit data """
+
+    voiddata = ascii.read('../data/sample_FINAL_new.csv').filled(-999.0)
+
+    if param=='vsigma':
+        properties = ['vmax','sigma','vsigma']
+        fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(16,5))
+
+        for i, property in enumerate(properties):
+            data_ifu = voiddata[property]
+            data_ifu_err = voiddata[property+'_err']
+            data_2d = voiddata[property+'2d']
+            data_2d_err = voiddata[property+'_err2d']
+            goodidx = np.where((data_ifu > 0.) & (data_2d > 0.))[0]
+
+            if property=='vmax':
+                limits = [0,100]
+                label = r'$v_{\mathrm{rot}}$ (km/s)'
+            elif property=='sigma':
+                limits = [0,100]
+                label = r'$\sigma_{\star}$ (km/s)'
+            elif property=='vsigma':
+                limits = [0,3]
+                label = r'$v_{\mathrm{rot}}/\sigma_{\star}$'
+
+            ax[i].errorbar(data_ifu[goodidx], data_2d[goodidx], xerr=data_ifu_err[goodidx], yerr=data_2d_err[goodidx],
+                            color='cornflowerblue', linestyle='None', marker='o', markersize=8, linewidth=1)
+
+            ax[i].plot(limits, limits, 'k--')
+            ax[i].set_xlim(limits)
+            ax[i].set_ylim(limits)
+            ax[i].tick_params(axis='both', labelsize=14)
+            ax[i].set_xlabel('IFU '+label, fontsize=18)
+            ax[i].set_ylabel('Long-slit '+label, fontsize=18)
+
+        fig.tight_layout()
+        plt.savefig(plot_path+'ifu_longslit_comparison.png', bbox_inches='tight')
+        plt.show()
+
+    if param=='sigma':
+        versions = ['2d','desi']
+        labels = ['Long-slit (DBSP)', 'Fiber (DESI)']
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(6,5))
+
+        data_ifu = voiddata['sigma']
+        data_ifu_err = voiddata['sigma_err']
+
+        for i, version in enumerate(versions):
+
+            data_comparison = voiddata['sigma'+version]
+            errs_comparison = voiddata['sigma_err'+version]
+            
+            goodidx = np.where((data_ifu > 0.68) & (data_comparison > 0.68))[0] # & (errs_comparison < data_comparison))[0]
+
+            plt.errorbar(data_ifu[goodidx], data_comparison[goodidx], xerr=data_ifu_err[goodidx], yerr=errs_comparison[goodidx],
+                            color=plt.cm.Set2(i), linestyle='None', marker='o', markersize=8, linewidth=1, label=labels[i]+', $N$='+str(len(goodidx)))
+
+            #plt.hist((data_comparison[goodidx] - data_ifu[goodidx])/data_ifu[goodidx], bins=np.linspace(-0.5, 2, 15), color=plt.cm.Set2(i), alpha=0.5, label=labels[i])
+
+        limits = [0,80]
+        plt.plot(limits, limits, 'k--')
+        plt.xlim(limits)
+        plt.ylim(limits)
+        plt.xlabel(r'IFU $\sigma_{\star}$ (km/s)', fontsize=18)
+        plt.ylabel('Comparison $\sigma_{\star}$ (km/s)', fontsize=18)
+
+        ax.tick_params(axis='both', labelsize=14)
+        #plt.xlabel('Percent difference from IFU $\sigma_{\star}$', fontsize=18)
+
+        plt.legend(loc='best', fontsize=14)
+
+        fig.tight_layout()
+        plt.savefig(plot_path+'sigma_comparison.png', bbox_inches='tight')
+        plt.show()
+
+    return
+
+def compare_nslits(plot_path='plots/', param='sigma'):
+    """ Make plots comparing kinematics measured from IFU vs (mock) long-slit data """
+
+    ifudata = pd.read_csv('../data/sample_FINAL_new.csv', delimiter=',', header=0, index_col='ID')
+
+    fig, axs = plt.subplots(nrows=1, ncols=4, figsize=(21,5))
+    versions = ['1 slit', '2 slits', '3 slits', '4 slits']
+    for i in range(4):
+
+        nangles = i+1
+
+        slitdata = pd.read_csv('../redux/output/vsigma_%d.txt'%nangles, header=0, index_col='ID')
+
+        # test
+        newdata = ifudata.join(slitdata, rsuffix='_%d'%nangles)
+
+        goodidx = np.where((~np.isnan(newdata[param])) & (~np.isnan(newdata[param+'_%d'%nangles])))[0]
+
+        axs[i].errorbar(newdata[param], newdata[param+'_%d'%nangles], xerr=newdata[param+'_err'], yerr=newdata[param+'_err'+'_%d'%nangles],
+                        color=plt.cm.Set2(i), linestyle='None', marker='o', markersize=8, linewidth=1, label=versions[i]+', $N$='+str(len(goodidx)))
+
+        axs[i].tick_params(axis='both', labelsize=14)
+        if param=='vmax':
+            limits = [0,100]
+            label = r'$v_{\mathrm{rot}}$ (km/s)'
+        elif param=='sigma':
+            limits = [0,100]
+            label = r'$\sigma_{\star}$ (km/s)'
+        elif param=='vsigma':
+            limits = [0,3]
+            label = r'$v_{\mathrm{rot}}/\sigma_{\star}$'
+        
+        axs[i].plot(limits, limits, 'k--')
+        axs[i].set_xlim(limits)
+        axs[i].set_ylim(limits)
+        axs[i].set_xlabel(r'IFU '+label, fontsize=18)
+        axs[0].set_ylabel('Comparison '+label, fontsize=18)
+        axs[i].legend(loc='upper left', fontsize=14)
+
+    fig.tight_layout()
+    plt.savefig(plot_path+'slits_'+param+'.png', bbox_inches='tight')
+    plt.show()
+
+    return
 
 if __name__ == "__main__":
 
-    vsigma_plot(param='dLstar', inclination=False, plotline=False)
-    vsigma_plot(param='mass', mass='wise', inclination=False, plotline=True)
+    vsigma_plot(param='dLstar', inclination=False, plotline=False, onsky=True)
+    #vsigma_plot(param='mass', mass='wise', inclination=False, plotline=True)
+    #vsigma_plot(param='redshift', inclination=False, plotline=False)
     #vsigma_plot(param='ellipticity', inclination=False)
     #mass_metallicity()
     #dLstar_mass()
     #vsigma_dist()
+    #compare_nslits(param='vmax')
