@@ -544,8 +544,8 @@ def compare_nslits(plot_path='plots/', param='sigma'):
 
 if __name__ == "__main__":
 
-    vsigma_plot(param='dLstar', inclination=False, plotline=False, onsky=True)
-    #vsigma_plot(param='mass', mass='wise', inclination=False, plotline=True)
+    #vsigma_plot(param='dLstar', inclination=False, plotline=False, onsky=True)
+    vsigma_plot(param='mass', mass='wise', inclination=False, plotline=True)
     #vsigma_plot(param='redshift', inclination=False, plotline=False)
     #vsigma_plot(param='ellipticity', inclination=False)
     #mass_metallicity()

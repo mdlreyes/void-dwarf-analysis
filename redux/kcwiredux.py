@@ -168,7 +168,7 @@ class Cube:
 			ax = plt.subplot(projection=self.wcs,slices=('x', 'y', 50))
 			plt.imshow(totaldata)
 			plt.colorbar()
-			#plt.show()
+			plt.show()
 
 			# Plot example spectrum
 			plt.figure(figsize=(12,5))
@@ -183,7 +183,7 @@ class Cube:
 			# Plot error
 			testerror = np.sqrt(self.var[:,idx,idy])
 			plt.fill_between(self.wvl_zcorr,self.data[:,idx,idy]-testerror,self.data[:,idx,idy]+testerror,facecolor='C0',alpha=0.5,edgecolor='None')
-			#plt.show()
+			plt.show()
 
 	def binspaxels(self, params=[1., 1., 60.], verbose=False, targetsn=10., emline=None):
 		""" Bin spaxels spatially to increase S/N
@@ -219,7 +219,7 @@ class Cube:
 			if verbose:
 				plt.imshow(sntest)
 				plt.colorbar()
-				#plt.show()
+				plt.show()
 			np.save('output/'+self.galaxyname+'/contsnr', np.ma.getdata(sntest))
 		
 		else:
@@ -255,7 +255,7 @@ class Cube:
 			if verbose:
 				plt.imshow(sntest)
 				plt.colorbar()
-				#plt.show()
+				plt.show()
 			np.save('output/'+self.galaxyname+'/'+emline+'snr', np.ma.getdata(sntest))
 
 		# Prep data for binning by making lists that vorbin can read
@@ -282,7 +282,7 @@ class Cube:
 		self.binNum, xNode, yNode, xBar, yBar, self.sn, nPixels, scale = voronoi_2d_binning(self.x, self.y, s, n, targetsn, sn_func=snfunc, plot=1, quiet=1)
 		if verbose:
 			plt.tight_layout()
-			#plt.show()
+			plt.show()
 		else:
 			plt.close()
 
@@ -367,7 +367,7 @@ class Cube:
 			im=ax.imshow(np.ma.sum(stacked_data[self.goodwvl_sn,:,:], axis=0), vmin=0)
 			fig.colorbar(im, ax=ax)
 			plt.savefig('figures/'+self.galaxyname+'/bintest.pdf', bbox_inches='tight')
-			#plt.show()
+			plt.show()
 
 		return
 
@@ -1393,14 +1393,14 @@ def runredux(galaxyname, folder='/raid/madlr/voids/analysis/stackedcubes/', make
 	# Bin spaxels by continuum S/N, accounting for covariance
 	c.binspaxels(targetsn=param['targetsn'], params=covparams, emline=None, verbose=param['verbose'])
 
-	if not makeplots:
+	""" if not makeplots:
 		# Do continuum fitting to get stellar kinematics
 		c.stellarkinematics(overwrite=True, plottest=True, removekinematics=False, snr_mask=param['snr_mask'], verbose=param['verbose'], vsigma=True)
 	else:
 		c.stellarkinematics(overwrite=False, plottest=True, removekinematics=False, snr_mask=param['snr_mask'], verbose=param['verbose'], vsigma=True, plotveldist=True)
 
 	# Make kinematics plots
-	c.plotkinematics(vellimit=param['vellimit'], veldisplimit=param['veldisplimit'], ploterrs=False)
+	c.plotkinematics(vellimit=param['vellimit'], veldisplimit=param['veldisplimit'], ploterrs=False) """
 
 	# TODO: Re-bin, this time using emission line S/N
 	#c.binspaxels(verbose=False, targetsn=10, params=covparams, emline='Hbeta')
@@ -1433,7 +1433,7 @@ def main():
 
 	#runallgalaxies()
 
-	runredux('955106', folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/redux/stackedcubes/', makeplots=True)
+	runredux('1782069', folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/redux/stackedcubes/', makeplots=True)
 
 	return
 
