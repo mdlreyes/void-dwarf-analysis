@@ -48,6 +48,10 @@ from astropy.modeling import models, fitting
 from utils.k_lambda import k_lambda
 from tqdm import tqdm
 
+# Packages from simulation_projector to read IFU data
+from input_output_functions import read_grafic2npcube
+from IFU_cube_functions import *
+
 # Wavelength dictionary for standard lines (from NIST when possible)
 wvldict = {'Hbeta':4861.35, 'Hgamma':4340.472, 'Hdelta':4101.734, 'Hepsilon':3970.075,
 		'OII3727':3727.320, 'OII3729':3729.225, 'OII3727_doublet':3728., 'OIII4363':4363.209, 'OIII4959':4959., 'OIII5007':5006.8}
@@ -70,7 +74,7 @@ class Cube:
 
 	"""
 
-	def __init__(self, filename, folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/data/', verbose=False, wcscorr=None, z=0., sn_wvl=[4750.,4800.], wvlrange=[3700., 5100.], EBV=0.):
+	def __init__(self, filename, folder='/home/aqueen/sim_kinematics/mock_data/', verbose=False, wcscorr=None, z=0., sn_wvl=[4750.,4800.], wvlrange=[3700., 5100.], EBV=0.):
 
 		"""Opens datacube and sets base attributes.
 
@@ -99,45 +103,27 @@ class Cube:
 			os.makedirs('figures/'+self.galaxyname)
 
 		# Open main intensity cube
-		icube = fits.open(folder+filename+'_icubes.fits')
-		data = icube[0].data
+		icube = read_grafic2npcube(folder+filename+'_icube.dat')
 		self.hdu = icube
-		self.header = icube[0].header
+		data = icube[1]
+		self.header = icube[0]
+		self.data = icube[1]
 
-		# Open variance cube
-		with fits.open(folder+filename+'_vcubes.fits') as ecube:
-			var = ecube[0].data
-
-		# Open mask cube
-		with fits.open(folder+filename+'_mcubes.fits') as mcube:
-			self.mask = mcube[0].data
+		# Create constant variance cube
+		var = np.ones(data.shape) * 1e-6
+		#with fits.open(folder+filename+'_vcubes.dat') as ecube:
+		#	var = ecube[0].data
 
 		# Remove negative and inf variances
-		var[np.where(var < 0)] = np.mean(var[np.where((np.isfinite(var)))])
-		var[np.where((~np.isfinite(var)))] = np.mean(var[np.where((np.isfinite(var)))])
-
-		# Mask the data and variance cubes
-		self.data = np.ma.array(data, mask=self.mask)
-		self.var = np.ma.array(var, mask=self.mask)
-
-		# Apply WCS shift to correct for pointing errors
-		if len(wcscorr)==2:
-			self.header['CRVAL1'] += wcscorr[0]
-			self.header['CRVAL2'] += wcscorr[1]
-		self.wcs = WCS(icube[0].header)
+		#var[np.where(var < 0)] = np.mean(var[np.where((np.isfinite(var)))])
+		#var[np.where((~np.isfinite(var)))] = np.mean(var[np.where((np.isfinite(var)))])
+		self.var = var
 
 		# Make wavelength array
-		N = len(self.data[:,0,0])
-		wvl0 = self.header['CRVAL3'] # wvl zeropoint
-		wvld = self.header['CD3_3'] # wvl Angstroms per pixel
-		#wvl = np.arange(wvl0,wvl0+N*wvld,wvld)
-		wvl = (np.arange(self.header['NAXIS3']) + 1  - self.header['CRPIX3']) * self.header['CD3_3'] + self.header['CRVAL3'] # from Zhuyun's code
-
-		# Do correction for Galactic reddening
-		if EBV > 0.:
-			Alam = k_lambda(wvl)*EBV
-			Alam_array = np.tile(Alam[:, np.newaxis, np.newaxis], (1, self.data.shape[1], self.data.shape[2]))
-			self.data = self.data/np.power(10.,(Alam_array/(-2.5)))
+		self.wavelength_data = read_IFU_wavelength(folder+filename+'_info.txt')
+		wvl0 = self.wavelength_data['lmin (A)'] # wvl zeropoint
+		wvl = self.wavelength_data['wavelengths']
+		wvl = np.array(wvl)
 
 		# Do redshift correction
 		self.z = z
@@ -148,14 +134,8 @@ class Cube:
 		self.goodwvl = np.where((self.wvl_zcorr > wvlrange[0]) & (self.wvl_zcorr < wvlrange[1]))[0] # Wavelength range for stellar template fitting
 		self.wvl_cropped = self.wvl_zcorr[self.goodwvl]
 		self.data_cropped = self.data[self.goodwvl, :, :]
-		self.mask_cropped = self.mask[self.goodwvl, :, :]
 		self.goodwvl_sn = np.where((self.wvl_cropped > sn_wvl[0]) & (self.wvl_cropped < sn_wvl[1]))[0] # Use this when cropping wavelength range twice (for both S/N and stellar template fitting)
 
-		# Get zeropoints and deltas for coordinates
-		self.ra0 = self.header['CRVAL1']
-		self.dec0 = self.header['CRVAL2']
-		self.rad = self.header['CD1_1'] # RA degrees per col
-		self.decd = self.header['CD2_2'] # Dec degrees per row
 
 		# Plot image for testing
 		if verbose:
@@ -165,7 +145,7 @@ class Cube:
 
 			totaldata = np.ma.sum(self.data, axis=0)
 			fig = plt.figure(figsize=(8,8))
-			ax = plt.subplot(projection=self.wcs,slices=('x', 'y', 50))
+			#ax = plt.subplot(projection=self.wcs,slices=('x', 'y', 50))
 			plt.imshow(totaldata)
 			plt.colorbar()
 			plt.show()
@@ -1423,7 +1403,7 @@ def runallgalaxies():
 	# Run reduction pipeline for each galaxy
 	for galaxy in galaxylist:
 		try:
-			runredux(galaxy, folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/redux/stackedcubes/', makeplots=True)
+			runredux(galaxy, folder='/home/aqueen/void-dwarf-analysis/redux/stackedcubes/', makeplots=True)
 		except:
 			print('Failed on '+galaxy)
 
@@ -1433,7 +1413,8 @@ def main():
 
 	#runallgalaxies()
 
-	runredux('1782069', folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/redux/stackedcubes/', makeplots=True)
+	runredux('1782069', folder='/home/aqueen/void-dwarf-analysis/redux/stackedcubes/', makeplots=True)
+	
 
 	return
 
