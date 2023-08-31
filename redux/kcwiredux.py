@@ -5,8 +5,8 @@
 ######################################
 
 #Backend for python3 on mahler
-#import matplotlib
-#matplotlib.use('Agg')
+import matplotlib
+matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 #plt.interactive('on')
 
@@ -103,21 +103,21 @@ class Cube:
 			os.makedirs('figures/'+self.galaxyname)
 
 		# Open main intensity cube
-		icube = read_grafic2npcube(folder+filename+'_icube.dat')
-		self.hdu = icube
-		data = icube[1]
-		self.header = icube[0]
-		self.data = icube[1]
+		icube = np.load(folder+filename+'_icube.npy')
+		data = icube
 
-		# Create constant variance cube
-		var = np.ones(data.shape) * 1e-6
-		#with fits.open(folder+filename+'_vcubes.dat') as ecube:
-		#	var = ecube[0].data
+		# Open variance cube
+		ecube = np.load(folder+filename+'_vcube.npy')
+		var = ecube
+
+		# Mask the data and variance cubes
+		self.mask = data <= 0
+		self.data = np.ma.array(data, mask=self.mask)
+		self.var = np.ma.array(var, mask=self.mask)
 
 		# Remove negative and inf variances
 		#var[np.where(var < 0)] = np.mean(var[np.where((np.isfinite(var)))])
 		#var[np.where((~np.isfinite(var)))] = np.mean(var[np.where((np.isfinite(var)))])
-		self.var = var
 
 		# Make wavelength array
 		self.wavelength_data = read_IFU_wavelength(folder+filename+'_info.txt')
@@ -141,7 +141,7 @@ class Cube:
 		if verbose:
 
 			# Print header
-			print(repr(self.header))
+			#print(repr(self.header))
 
 			totaldata = np.ma.sum(self.data, axis=0)
 			fig = plt.figure(figsize=(8,8))
@@ -158,7 +158,7 @@ class Cube:
 
 			plt.xlabel(r'$\lambda (\AA)$', fontsize=16)
 			plt.ylabel('Flux', fontsize=16)
-			plt.xlim(3500,5100)
+			plt.xlim(4000,4500)
 
 			# Plot error
 			testerror = np.sqrt(self.var[:,idx,idy])
@@ -249,14 +249,7 @@ class Cube:
 		def snfunc(index, signal, noise):
 			sn = np.sum(signal[index])/np.sqrt(np.sum(noise[index]**2))
 
-			# Apply covariance correction
-			self.alpha, self.norm, self.threshold = params
-			if index.size >= self.threshold:
-				correction = self.norm * (1 + self.alpha * np.log(self.threshold))
-			else:
-				correction = self.norm * (1 + self.alpha * np.log(index.size))
-
-			return sn/correction
+			return sn
 
 		# Do actual binning
 		self.binNum, xNode, yNode, xBar, yBar, self.sn, nPixels, scale = voronoi_2d_binning(self.x, self.y, s, n, targetsn, sn_func=snfunc, plot=1, quiet=1)
@@ -291,11 +284,9 @@ class Cube:
 			# Loop over all pixels in the bin and append the spectrum and variance from each pixel to lists
 			binned_spec = []
 			binned_var = []
-			binned_mask = []
 			for i in range(len(xarray)):
 				binned_spec.append(self.data[self.goodwvl,yarray[i],xarray[i]].data)
 				binned_var.append(self.var[self.goodwvl,yarray[i],xarray[i]].data)
-				binned_mask.append(self.mask[self.goodwvl,yarray[i],xarray[i]])
 
 				# Also record the bin ID for each pixel
 				self.binIDarray[yarray[i], xarray[i]] = binID
@@ -306,16 +297,11 @@ class Cube:
 					for i in range(len(xarray)):
 						stacked_data[:,yarray[i],xarray[i]] = np.ma.mean(binned_spec)
 
-			# Compute covariance correction
-			if len(xarray) >= self.threshold:
-				correction = self.norm * (1 + self.alpha * np.log(self.threshold))
-			else:
-				correction = self.norm * (1 + self.alpha * np.log(len(xarray)))
 
 			#binned_var = np.ma.array(np.asarray(binned_var), mask=np.asarray(binned_mask))
 
 			self.stacked_spec[binID] = np.ma.mean(binned_spec, axis=0) #np.ma.average(binned_spec, axis=0, weights=1/np.power(binned_var,2))
-			self.stacked_errs[binID] = np.ma.mean(binned_var, axis=0) * correction**2. / len(xarray) #np.sqrt(1./np.ma.sum(1./np.asarray(binned_var), axis=0))
+			self.stacked_errs[binID] = np.ma.mean(binned_var, axis=0) / len(xarray) #np.sqrt(1./np.ma.sum(1./np.asarray(binned_var), axis=0))
 
 		# For testing purposes, save arrays of bin IDs and bin errors
 		np.save('output/'+self.galaxyname+'/binIDarray', self.binIDarray)
@@ -334,7 +320,7 @@ class Cube:
 		if verbose:
 
 			fig = plt.figure(figsize=(6,6))
-			ax = fig.add_subplot(111,projection=self.wcs,slices=('x', 'y', 50))
+			ax = fig.add_subplot(111)
 			ax.set_title('Original white-light image', fontsize=14)
 			im=ax.imshow(np.ma.sum(self.data[self.wvlsection,:,:], axis=0), vmin=0)
 			fig.colorbar(im, ax=ax)
@@ -342,7 +328,7 @@ class Cube:
 			plt.close()
 
 			fig = plt.figure(figsize=(6,6))
-			ax = fig.add_subplot(111,projection=self.wcs,slices=('x', 'y', 50))
+			ax = fig.add_subplot(111)
 			ax.set_title('Binned image (with covar correction)', fontsize=14)
 			im=ax.imshow(np.ma.sum(stacked_data[self.goodwvl_sn,:,:], axis=0), vmin=0)
 			fig.colorbar(im, ax=ax)
@@ -474,7 +460,7 @@ class Cube:
 		"""
 
 		# If output files don't exist, run kinematics fitting
-		if overwrite or os.path.exists('output/new/'+self.galaxyname+'/velocity.out')==False: # or os.path.exists('output/'+self.galaxyname+'/kinfit.npy')==False:
+		if overwrite or os.path.exists('output/'+self.galaxyname+'/velocity.out')==False: # or os.path.exists('output/'+self.galaxyname+'/kinfit.npy')==False:
 
 			# Prep the stellar fit
 			self.prepstellarfit()
@@ -589,11 +575,11 @@ class Cube:
 		else:
 
 			# Define data
-			self.vel = np.loadtxt('output/new/'+self.galaxyname+'/velocity.out')
-			self.veldisp = np.loadtxt('output/new/'+self.galaxyname+'/veldisp.out')
-			self.vel_err = np.loadtxt('output/new/'+self.galaxyname+'/vel_err.out')
-			self.veldisp_err = np.loadtxt('output/new/'+self.galaxyname+'/veldisp_err.out')
-			self.velmask = np.loadtxt('output/new/'+self.galaxyname+'/velmask.out')
+			self.vel = np.loadtxt('output/'+self.galaxyname+'/velocity.out')
+			self.veldisp = np.loadtxt('output/'+self.galaxyname+'/veldisp.out')
+			self.vel_err = np.loadtxt('output/'+self.galaxyname+'/vel_err.out')
+			self.veldisp_err = np.loadtxt('output/'+self.galaxyname+'/veldisp_err.out')
+			self.velmask = np.loadtxt('output/'+self.galaxyname+'/velmask.out')
 
 			# Compute sigma
 			goodidx = np.where(~np.isnan(self.vel) & ~np.isnan(self.veldisp) & (self.veldisp_err > 1e-5) & (self.veldisp > 1.)) # & (self.veldisp > self.veldisp_err))
@@ -804,7 +790,7 @@ class Cube:
 		veldisp_err = self.veldisp_err #np.loadtxt('output/'+self.galaxyname+'/'+veldisp_err) if veldisp_err=='veldisp_err.out' else self.veldisp_err
 
 		if velmask=='velmask.out': 
-			velmask = np.loadtxt('output/new/'+self.galaxyname+'/'+velmask)
+			velmask = np.loadtxt('output/'+self.galaxyname+'/'+velmask)
 		else:
 			velmask = self.velmask
 
@@ -1156,9 +1142,9 @@ class Cube:
 				kinematics_wvl = np.load('output/'+self.galaxyname+'/'+'kinwvl.npy')
 
 			# Mask data
-			data_norm = np.ma.array(data_norm, mask=self.mask_cropped)
-			kinematics_wvl = np.ma.array(kinematics_wvl, mask=self.mask_cropped)
-			errors = np.ma.array(errors, mask=self.mask_cropped)
+			# data_norm = np.ma.array(data_norm, mask=self.mask_cropped)
+			# kinematics_wvl = np.ma.array(kinematics_wvl, mask=self.mask_cropped)
+			# errors = np.ma.array(errors, mask=self.mask_cropped)
 
 		# Get Balmer line maps
 		resultHgamma = self.make_emline_map(data_norm, kinematics_wvl, errors, 'Hgamma', overwrite=overwrite, binned=binned)
@@ -1356,31 +1342,25 @@ def runredux(galaxyname, folder='/raid/madlr/voids/analysis/stackedcubes/', make
 			(note: only works if all steps have been run before!)
 	"""
 
+	matplotlib.use("TkAgg")
 	# Open params
-	param = params[galaxyname]
+	#param = params[galaxyname]
 
 	# Open cube
-	c = Cube(galaxyname, folder=folder, verbose=param['verbose'], wcscorr=param['wcscorr'], z=param['z'], EBV=param['EBV'])
-
-	if (not makeplots) and (param['plotcovar']):
-		# Get covariance estimate
-		covparams = kcwialign.estimatecovar(galaxyname, folder=folder, plot=True, maskfile=folder+galaxyname+'_mcubes.fits')
-	else:
-		covparams = param['covparams']
-
-	print(covparams, param['targetsn'])
+	c = Cube(galaxyname, folder=folder, verbose=True, sn_wvl=[4000., 4500.])
 
 	# Bin spaxels by continuum S/N, accounting for covariance
-	c.binspaxels(targetsn=param['targetsn'], params=covparams, emline=None, verbose=param['verbose'])
+	c.binspaxels(emline=None, verbose=True, targetsn=30)
 
+	
 	if not makeplots:
 		# Do continuum fitting to get stellar kinematics
-		c.stellarkinematics(overwrite=True, plottest=True, removekinematics=False, snr_mask=param['snr_mask'], verbose=param['verbose'], vsigma=True)
+		c.stellarkinematics(overwrite=True, plottest=True, removekinematics=False, snr_mask=1, verbose=True, vsigma=True)
 	else:
-		c.stellarkinematics(overwrite=False, plottest=True, removekinematics=False, snr_mask=param['snr_mask'], verbose=param['verbose'], vsigma=True, plotveldist=True)
+		c.stellarkinematics(overwrite=False, plottest=True, removekinematics=False, snr_mask=1, verbose=True, vsigma=True, plotveldist=True)
 
 	# Make kinematics plots
-	c.plotkinematics(vellimit=param['vellimit'], veldisplimit=param['veldisplimit'], ploterrs=False)
+	c.plotkinematics(vellimit=100, veldisplimit=[0, 150], ploterrs=False)
 
 	# TODO: Re-bin, this time using emission line S/N
 	#c.binspaxels(verbose=False, targetsn=10, params=covparams, emline='Hbeta')
@@ -1413,7 +1393,7 @@ def main():
 
 	#runallgalaxies()
 
-	runredux('1782069', folder='/home/aqueen/void-dwarf-analysis/redux/stackedcubes/', makeplots=True)
+	runredux('mock_IFU', folder='/home/aqueen/sim_kinematics/mock_data/', makeplots=True)
 	
 
 	return
