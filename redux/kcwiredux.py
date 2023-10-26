@@ -101,23 +101,21 @@ class Cube:
 			os.makedirs('output/'+self.galaxyname)
 		if not os.path.exists('figures/'+self.galaxyname):
 			os.makedirs('figures/'+self.galaxyname)
+		if not os.path.exists('figures/distributions'):
+			os.makedirs('figures/distributions')
+		if not os.path.exists('figures/kinematics'):
+			os.makedirs('figures/kinematics')
 
 		# Open main intensity cube
-		icube = np.load(folder+filename+'_icube.npy')
-		data = icube
+		data = np.load(folder+filename+'_icube.npy')
 
 		# Open variance cube
-		ecube = np.load(folder+filename+'_vcube.npy')
-		var = ecube
+		var = np.load(folder+filename+'_vcube.npy')
 
 		# Mask the data and variance cubes
 		self.mask = data <= 0
 		self.data = np.ma.array(data, mask=self.mask)
 		self.var = np.ma.array(var, mask=self.mask)
-
-		# Remove negative and inf variances
-		#var[np.where(var < 0)] = np.mean(var[np.where((np.isfinite(var)))])
-		#var[np.where((~np.isfinite(var)))] = np.mean(var[np.where((np.isfinite(var)))])
 
 		# Make wavelength array
 		self.wavelength_data = read_IFU_wavelength(folder+filename+'_info.txt')
@@ -140,12 +138,9 @@ class Cube:
 		# Plot image for testing
 		if verbose:
 
-			# Print header
-			#print(repr(self.header))
 
 			totaldata = np.ma.sum(self.data, axis=0)
 			fig = plt.figure(figsize=(8,8))
-			#ax = plt.subplot(projection=self.wcs,slices=('x', 'y', 50))
 			plt.imshow(totaldata)
 			plt.colorbar()
 			plt.show()
@@ -491,9 +486,8 @@ class Cube:
 			# Loop over all bins
 			for binID in tqdm(range(len(self.bins))):
 
-				#if np.any(self.stacked_errs[binID] < 0) or np.any(np.isclose(self.stacked_errs[binID], 1.)):
-				#	self.stacked_errs[binID][self.stacked_errs[binID] < 0] = 1e-6
-				#	self.stacked_errs[binID][np.isclose(self.stacked_errs[binID],1.)] = 1e-6
+				if np.any(self.stacked_errs[binID] < 0):
+					self.stacked_errs[binID][self.stacked_errs[binID] < 0] = 1e-6
 
 				# Do stellar kinematic fit
 				params, fitwvl, fit, obs, obserr = self.ppxf_fit(self.stacked_spec[binID], self.stacked_errs[binID], verbose=False)
@@ -856,7 +850,7 @@ class Cube:
 
 			if showplot:
 				fig = plt.figure(figsize=(5,5))
-				ax = plt.subplot(projection=self.wcs,slices=('x', 'y', 50))
+				ax = plt.subplot()
 				#ax.set_title(self.galaxyname, fontsize=18, weight='bold')
 				plt.grid(color='black', ls='dotted')
 				if limits is None:
@@ -888,10 +882,10 @@ class Cube:
 		fig = plt.figure(figsize=(15,5))
 
 		# Plot white-light image
-		ax0 = fig.add_subplot(131,projection=self.wcs,slices=('x', 'y', 50))
+		ax0 = fig.add_subplot(131)
 		ax0.grid(color='black', ls='dotted')
-		ax0.coords[0].set_axislabel(' ')
-		ax0.coords[1].set_axislabel(' ')
+		#ax0.coords[0].set_axislabel(' ')
+		#ax0.coords[1].set_axislabel(' ')
 		im=ax0.imshow(np.ma.sum(self.data[self.wvlsection,:,:], axis=0), vmin=0, cmap=cmr.neutral_r)
 		cb = fig.colorbar(im, ax=ax0, pad=0.) #, shrink=0.9)
 		cb.set_label(label='Flux', size=18, weight='bold')
@@ -903,44 +897,44 @@ class Cube:
 		print('test', 20*testdist, 16.5*testdist)  # kpc / arcsec
 
 		# Create scalebar 
-		distance = Distance(z=self.z, cosmology=cosmo).to(u.kpc)
-		if (testdist*16.5).value < 1:
-			scalebar_length = 100 * u.pc 
-			scalebar_label = "100 pc"
-		else:
-			scalebar_length = 1 * u.kpc
-			scalebar_label = "1 kpc"
-		scalebar_angle = (scalebar_length / distance).to(u.deg, equivalencies=u.dimensionless_angles())
+		#distance = Distance(z=self.z, cosmology=cosmo).to(u.kpc)
+		#if (testdist*16.5).value < 1:
+		#	scalebar_length = 100 * u.pc 
+		#	scalebar_label = "100 pc"
+		#else:
+		#	scalebar_length = 1 * u.kpc
+		#	scalebar_label = "1 kpc"
+		#scalebar_angle = (scalebar_length / distance).to(u.deg, equivalencies=u.dimensionless_angles())
 
-		test_dist =  cosmo.arcsec_per_kpc_proper(self.z)
+		#test_dist =  cosmo.arcsec_per_kpc_proper(self.z)
 		#print('test', test_dist)  # arcsec per kpc
 
 		# Add a scale bar
-		add_scalebar(ax0, scalebar_angle, label=scalebar_label, color="black")
+		#add_scalebar(ax0, scalebar_angle, label=scalebar_label, color="black")
 
 		# Plot velocity
 		vcopy = plot(vel, error=vel_err, limits=[-vellimit,vellimit], cmap='coolwarm', title=r'$V$ (km/s)', mask=velmask, plotname='vel')
-		ax1 = fig.add_subplot(132,projection=self.wcs,slices=('x', 'y', 50))
+		ax1 = fig.add_subplot(132)
 		ax1.grid(color='black', ls='dotted')
-		ax1.coords[0].set_axislabel(' ')
-		ax1.coords[1].set_axislabel(' ')
+		#ax1.coords[0].set_axislabel(' ')
+		#ax1.coords[1].set_axislabel(' ')
 		im = ax1.imshow(vcopy, vmin=-vellimit, vmax=vellimit, cmap='coolwarm')
 		cb = fig.colorbar(im, ax=ax1, pad=0.) #, shrink=0.9)
 		cb.set_label(label=r'$v$ (km/s)', size=18, weight='bold')
 
 		# Plot veldisp
 		vdispcopy = plot(veldisp, error=veldisp_err, limits=[veldisplimit[0], veldisplimit[1]], cmap=cmr.ember, title=r'$\sigma$ (km/s)', mask=velmask, plotname='veldisp')
-		ax2 = fig.add_subplot(133,projection=self.wcs,slices=('x', 'y', 50))
+		ax2 = fig.add_subplot(133)
 		ax2.grid(color='black', ls='dotted')
-		ax2.coords[0].set_axislabel(' ')
-		ax2.coords[1].set_axislabel(' ')
+		#ax2.coords[0].set_axislabel(' ')
+		#ax2.coords[1].set_axislabel(' ')
 		im = ax2.imshow(vdispcopy, vmin=veldisplimit[0], vmax=veldisplimit[1], cmap=cmr.bubblegum)
 		cb = fig.colorbar(im, ax=ax2, pad=0.) #, shrink=0.9)
 		cb.set_label(label=r'$\sigma_{\star}$ (km/s)', size=18, weight='bold')
 
 		fig.tight_layout(pad=4.0)
 		plt.savefig('figures/kinematics/'+self.galaxyname+'.pdf', bbox_inches='tight')
-		#plt.show()
+		plt.show()
 		plt.close()
 
 		return
@@ -1344,23 +1338,23 @@ def runredux(galaxyname, folder='/raid/madlr/voids/analysis/stackedcubes/', make
 
 	matplotlib.use("TkAgg")
 	# Open params
-	#param = params[galaxyname]
+	param = params[galaxyname]
 
 	# Open cube
-	c = Cube(galaxyname, folder=folder, verbose=True, sn_wvl=[4000., 4500.])
+	c = Cube(galaxyname, folder=folder, verbose=param['verbose'], z=param['z'])
 
 	# Bin spaxels by continuum S/N, accounting for covariance
-	c.binspaxels(emline=None, verbose=True, targetsn=30)
+	c.binspaxels(targetsn=param['targetsn'], emline=None, verbose=param['verbose'])
 
 	
 	if not makeplots:
 		# Do continuum fitting to get stellar kinematics
-		c.stellarkinematics(overwrite=True, plottest=True, removekinematics=False, snr_mask=1, verbose=True, vsigma=True)
+		c.stellarkinematics(overwrite=True, plottest=True, removekinematics=False, snr_mask=param['snr_mask'], verbose=param['verbose'], vsigma=True)
 	else:
-		c.stellarkinematics(overwrite=False, plottest=True, removekinematics=False, snr_mask=1, verbose=True, vsigma=True, plotveldist=True)
+		c.stellarkinematics(overwrite=False, plottest=True, removekinematics=False, snr_mask=param['snr_mask'], verbose=param['verbose'], vsigma=True, plotveldist=True)
 
 	# Make kinematics plots
-	c.plotkinematics(vellimit=100, veldisplimit=[0, 150], ploterrs=False)
+	c.plotkinematics(vellimit=param['vellimit'], veldisplimit=param['veldisplimit'], ploterrs=False)
 
 	# TODO: Re-bin, this time using emission line S/N
 	#c.binspaxels(verbose=False, targetsn=10, params=covparams, emline='Hbeta')

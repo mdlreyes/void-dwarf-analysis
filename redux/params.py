@@ -411,5 +411,15 @@ params = \
         'instdisp': False,
         'vellimit': 140,
         'veldisplimit': [20,100]
+    },
+'mock_IFU': 
+    {
+        'verbose': False,
+        'z': 0.,
+        'targetsn': 40,
+        'snr_mask': snr_mask,
+        'instdisp': False,
+        'vellimit': 150,
+        'veldisplimit': [80, 250]
     }
 }
