@@ -111,6 +111,7 @@ class Cube:
 
 		# Open variance cube
 		var = np.load(folder+filename+'_vcube.npy')
+		#var = np.full(data.shape, 1e-30)
 
 		# Mask the data and variance cubes
 		self.mask = data <= 0
@@ -153,7 +154,7 @@ class Cube:
 
 			plt.xlabel(r'$\lambda (\AA)$', fontsize=16)
 			plt.ylabel('Flux', fontsize=16)
-			plt.xlim(4000,4500)
+			plt.xlim(3700,5100)
 
 			# Plot error
 			testerror = np.sqrt(self.var[:,idx,idy])
@@ -934,6 +935,7 @@ class Cube:
 
 		fig.tight_layout(pad=4.0)
 		plt.savefig('figures/kinematics/'+self.galaxyname+'.pdf', bbox_inches='tight')
+		plt.savefig('figures/kinematics/'+self.galaxyname+'.png', bbox_inches='tight')
 		plt.show()
 		plt.close()
 
@@ -1349,9 +1351,9 @@ def runredux(galaxyname, folder='/raid/madlr/voids/analysis/stackedcubes/', make
 	
 	if not makeplots:
 		# Do continuum fitting to get stellar kinematics
-		c.stellarkinematics(overwrite=True, plottest=True, removekinematics=False, snr_mask=param['snr_mask'], verbose=param['verbose'], vsigma=True)
+		c.stellarkinematics(overwrite=False, plottest=True, removekinematics=False, snr_mask=param['snr_mask'], verbose=param['verbose'], vsigma=True)
 	else:
-		c.stellarkinematics(overwrite=False, plottest=True, removekinematics=False, snr_mask=param['snr_mask'], verbose=param['verbose'], vsigma=True, plotveldist=True)
+		c.stellarkinematics(overwrite=True, plottest=True, removekinematics=False, snr_mask=param['snr_mask'], verbose=param['verbose'], vsigma=True, plotveldist=True)
 
 	# Make kinematics plots
 	c.plotkinematics(vellimit=param['vellimit'], veldisplimit=param['veldisplimit'], ploterrs=False)
@@ -1377,7 +1379,7 @@ def runallgalaxies():
 	# Run reduction pipeline for each galaxy
 	for galaxy in galaxylist:
 		try:
-			runredux(galaxy, folder='/home/aqueen/void-dwarf-analysis/redux/stackedcubes/', makeplots=True)
+			runredux(galaxy, folder='/home/aqueen/void-dwarf-analysis/redux/stackedcubes/', makeplots=False)
 		except:
 			print('Failed on '+galaxy)
 
@@ -1387,7 +1389,7 @@ def main():
 
 	#runallgalaxies()
 
-	runredux('mock_IFU', folder='/home/aqueen/sim_kinematics/mock_data/', makeplots=True)
+	runredux('RTiMHD_KCWI', folder='/home/aqueen/sim_kinematics/mock_data/', makeplots=True)
 	
 
 	return

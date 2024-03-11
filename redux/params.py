@@ -421,5 +421,125 @@ params = \
         'instdisp': False,
         'vellimit': 150,
         'veldisplimit': [80, 250]
+    },
+'mock_IFU_no_noise': 
+    {
+        'verbose': False,
+        'z': 0.,
+        'targetsn': 40,
+        'snr_mask': snr_mask,
+        'instdisp': False,
+        'vellimit': 100,
+        'veldisplimit': [80, 250]
+    },
+'RTnsCRiMHD_KCWI': 
+    {
+        'verbose': False,
+        'z': 0.,
+        'targetsn': 40,
+        'snr_mask': snr_mask,
+        'instdisp': False,
+        'vellimit': 20,
+        'veldisplimit': [10, 60]
+    },
+'RTnsCRiMHD_KCWI_no_noise': 
+    {
+        'verbose': False,
+        'z': 0.,
+        'targetsn': 600,
+        'snr_mask': snr_mask,
+        'instdisp': False,
+        'vellimit': 20,
+        'veldisplimit': [28, 32]
+    },
+'NoFb_KCWI': 
+    {
+        'verbose': False,
+        'z': 0.,
+        'targetsn': 60,
+        'snr_mask': snr_mask,
+        'instdisp': False,
+        'vellimit': 30,
+        'veldisplimit': [20, 40]
+    },
+'NoFb_KCWI_no_noise': 
+    {
+        'verbose': False,
+        'z': 0.,
+        'targetsn': 120,
+        'snr_mask': snr_mask,
+        'instdisp': False,
+        'vellimit': 30,
+        'veldisplimit': [20, 40]
+    },
+'HD_KCWI': 
+    {
+        'verbose': False,
+        'z': 0.,
+        'targetsn': 50,
+        'snr_mask': snr_mask,
+        'instdisp': False,
+        'vellimit': 15,
+        'veldisplimit': [0, 50]
+    },
+'RTnsCRiMHD_highres': 
+    {
+        'verbose': False,
+        'z': 0.,
+        'targetsn': 40,
+        'snr_mask': snr_mask,
+        'instdisp': False,
+        'vellimit': 20,
+        'veldisplimit': [10, 35]
+    },
+'HD-Boost_KCWI': 
+    {
+        'verbose': False,
+        'z': 0.,
+        'targetsn': 50,
+        'snr_mask': snr_mask,
+        'instdisp': False,
+        'vellimit': 15,
+        'veldisplimit': [0, 60]
+    },
+'CRiMHD_KCWI': 
+    {
+        'verbose': False,
+        'z': 0.,
+        'targetsn': 40,
+        'snr_mask': snr_mask,
+        'instdisp': False,
+        'vellimit': 20,
+        'veldisplimit': [0, 60]
+    },
+'iMHD_KCWI': 
+    {
+        'verbose': False,
+        'z': 0.,
+        'targetsn': 60,
+        'snr_mask': snr_mask,
+        'instdisp': False,
+        'vellimit': 15,
+        'veldisplimit': [0, 60]
+    },
+'RT_KCWI': 
+    {
+        'verbose': False,
+        'z': 0.,
+        'targetsn': 50,
+        'snr_mask': snr_mask,
+        'instdisp': False,
+        'vellimit': 15,
+        'veldisplimit': [0, 60]
+    },
+'RTiMHD_KCWI': 
+    {
+        'verbose': False,
+        'z': 0.,
+        'targetsn': 60,
+        'snr_mask': snr_mask,
+        'instdisp': False,
+        'vellimit': 15,
+        'veldisplimit': [0, 60]
     }
 }
