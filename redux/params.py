@@ -436,10 +436,10 @@ params = \
     {
         'verbose': False,
         'z': 0.,
-        'targetsn': 40,
+        'targetsn': 50,
         'snr_mask': snr_mask,
         'instdisp': False,
-        'vellimit': 20,
+        'vellimit': 15,
         'veldisplimit': [10, 60]
     },
 'RTnsCRiMHD_KCWI_no_noise': 
@@ -506,10 +506,10 @@ params = \
     {
         'verbose': False,
         'z': 0.,
-        'targetsn': 40,
+        'targetsn': 50,
         'snr_mask': snr_mask,
         'instdisp': False,
-        'vellimit': 20,
+        'vellimit': 15,
         'veldisplimit': [0, 60]
     },
 'iMHD_KCWI': 

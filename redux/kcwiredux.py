@@ -1389,7 +1389,7 @@ def main():
 
 	#runallgalaxies()
 
-	runredux('RTiMHD_KCWI', folder='/home/aqueen/sim_kinematics/mock_data/', makeplots=True)
+	runredux('CRiMHD_KCWI', folder='/home/aqueen/sim_kinematics/mock_data/', makeplots=True)
 	
 
 	return
