@@ -26,7 +26,6 @@ from ppxf.ppxf import ppxf
 import ppxf.ppxf_util as util
 import glob
 from scipy import ndimage
-import multiprocessing
 
 # Packages for emission line fitting
 from k_lambda import k_lambda
@@ -80,7 +79,7 @@ class Cube:
 
 	"""
 
-	def __init__(self, filename, folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/redux/stackedcubes/', wcscorr=None, z=0., sn_wvl=[4750.,4800.], wvlrange=[3700., 5100.], EBV=0.):
+	def __init__(self, filename, folder='/oak/stanford/orgs/kipac/users/mdlreyes/data/stackedcubes/', wcscorr=None, z=0., sn_wvl=[4750.,4800.], wvlrange=[3700., 5100.], EBV=0.):
 
 		"""Opens datacube and sets base attributes.
 
@@ -283,8 +282,8 @@ class Cube:
 		_, _, velscale = util.log_rebin(self.lamRange1, spectrum)
 
 		# Read the list of filenames from the E-MILES SSP library
-		ppxf_dir = os.path.dirname(os.path.realpath(ppxf_package.__file__))
-		vazdekis = glob.glob(ppxf_dir + '/miles_stellar/s*.fits')
+		#vazdekis = glob.glob('/oak/stanford/orgs/kipac/users/mdlreyes/data/miles_models/Mku*.fits')
+		vazdekis = glob.glob('/oak/stanford/orgs/kipac/users/mdlreyes/data/miles_stellar/s*.fits')
 		fwhm_tem = 2.51  # Vazdekis+10 spectra have a constant resolution FWHM of 2.51A.
 
 		# Open template spectrum in order to make get the size of the template array
@@ -348,7 +347,7 @@ class Cube:
 		rng = default_rng()
 
 		# Instantiate pool
-		p = multiprocessing.Pool() #processes=int(os.environ['SLURM_JOB_CPUS_PER_NODE']))
+		#p = multiprocessing.Pool(processes=4) #int(os.environ['SLURM_JOB_CPUS_PER_NODE']))
 
 		newsize = (Niter, self.stacked_errs.shape[0], self.stacked_errs.shape[1])
 		spec_new = np.broadcast_to(self.stacked_spec, newsize)
@@ -364,18 +363,20 @@ class Cube:
 									lamRange1=self.lamRange1, logLam2=self.logLam2, lamRange2=self.lamRange2)
 
 			# Begin the parallelization
-			for result in p.imap(func, range(len(self.bins))):
-			#with concurrent.futures.ProcessPoolExecutor() as executor:
-			#	for result in executor.map(func, range(len(self.bins))):
-			
-				# Get output
-				binID, params = result
+			#for result in p.imap(func, range(len(self.bins))):
+			with concurrent.futures.ProcessPoolExecutor(max_workers=int(os.environ['SLURM_CPUS_PER_TASK'])) as executor:
+				for result in executor.map(func, range(len(self.bins))):
+				
+					# Get output
+					binID, params = result
 
-				# Store kinematic params
-				vel[binID,iteration] = params[0]
-				veldisp[binID,iteration] = params[1]
-				if iteration==0 and self.sn[binID] > snr_mask:
-					self.velmask[binID] = 1
+					# Store kinematic params
+					vel[binID,iteration] = params[0]
+					veldisp[binID,iteration] = params[1]
+					if iteration==0 and self.sn[binID] > snr_mask:
+						self.velmask[binID] = 1
+
+			print(iteration)
 			
 		# Compute median values to store in final outputs
 		self.vel = np.nanmedian(vel, axis=1)
@@ -420,7 +421,7 @@ class Cube:
 
 		return
 
-def runredux(galaxyname, folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/redux/stackedcubes/', Niter=1000):
+def runredux(galaxyname, folder='/oak/stanford/orgs/kipac/users/mdlreyes/data/stackedcubes/', Niter=1000):
 	""" Run full redux pipeline.
 
 	Arguments:
@@ -446,18 +447,19 @@ def runredux(galaxyname, folder='/Users/miadelosreyes/Documents/Research/VoidDwa
 
 def main():
 
-	Niter = 1000
+	if len(sys.argv) != 3:
+		sys.exit("not enough args")
+	Niter = int(sys.argv[1])
+	galaxynum = int(sys.argv[2])
 
 	# List of all galaxies
 	#galaxylist = ['reines65','281238','control801','1074435','1158932','821857','866934','2502521','control751','control775']
 	#galaxylist = ['1142116','1876887','1126100','1280160','control757','control872']
-	#galaxylist = ['1782069','1063413','1228631','955106','1246626','825059','control842','1785212']
+	galaxylist = ['1782069','1063413','1228631','955106','1246626','825059','control842','1785212']
 	#galaxylist = ['PiscesA','PiscesB','control658','1904061','1180506']
-	galaxylist = ['1180506']
 
 	# Run test galaxy
-	for galaxy in galaxylist:
-		runredux(galaxy)
+	runredux(galaxylist[galaxynum], Niter=Niter)
 
 	return
 

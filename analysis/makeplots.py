@@ -77,8 +77,8 @@ def vsigma_plot(param='mass', plot_path='plots/', mass='sdss', inclination=False
             x_void = voiddata['massWISE']
             x_void_err = np.asarray([voiddata['massWISE_lo'],voiddata['massWISE_hi']])
 
-        labels = [None,None,None,None,None,None]
-    else:
+        #labels = [None,None,None,None,None,None]
+        #else:
         labels = ['Local Group ultra-faint','Local Group satellite','Local Group isolated','Void','Field','Larger than KCWI FoV']
 
     if param=='dLstar':
@@ -131,6 +131,7 @@ def vsigma_plot(param='mass', plot_path='plots/', mass='sdss', inclination=False
                     mfc='white', mec=plt.cm.Set2(1), ecolor=plt.cm.Set2(1), linestyle='None', marker='s', markersize=8, linewidth=1)
 
     # Plot my data
+    '''
     ax.errorbar(x_void[void_idx], y_void[void_idx], xerr=x_void_err[:,void_idx], yerr=y_void_err[:,void_idx], label=labels[3],
                mfc='white', mec=plt.cm.Dark2(2), ecolor=plt.cm.Dark2(2), linestyle='None', marker='o', markersize=8, linewidth=1)    
      
@@ -139,6 +140,9 @@ def vsigma_plot(param='mass', plot_path='plots/', mass='sdss', inclination=False
     
     ax.errorbar(x_void[extended_idx], y_void[extended_idx], label=labels[5],
                color='r', linestyle='None', marker='x', markersize=6, linewidth=1)
+    '''
+    ax.errorbar(x_void[good_idx], y_void[good_idx], xerr=x_void_err[:,good_idx], yerr=y_void_err[:,good_idx], label='de los Reyes et al. (2023)',
+               color=plt.cm.Dark2(2), linestyle='None', marker='o', markersize=8, linewidth=1)
 
     # Do some math to get best-fit line for mass
     if param=='mass' or param=='dLstar' and plotline:
@@ -165,15 +169,29 @@ def vsigma_plot(param='mass', plot_path='plots/', mass='sdss', inclination=False
 
         print(poly_med, poly_med-poly_lo, poly_hi-poly_med)
 
+    if param=='mass':
+        # Plot Keck2024A targets
+        #mass_keck2024a = np.array([8.02931976,8.13880634,8.24504566,8.27385139,8.70394897,8.721735,8.92823124,8.9456224,9.52635288,9.86613941])
+        #for i, mass in enumerate(mass_keck2024a):
+        #    if i==0:
+        #        plt.axvline(mass, color='C0', lw=1, label='Proposed target masses')
+        #    else:
+        #        plt.axvline(mass, color='C0', lw=1)
+
+        # Plot Keck2024B params
+        plt.errorbar(np.log10(6e10), 7, yerr=3, marker='s', color='k', ls='None', label='MW') # van der Marel (2003)
+        plt.errorbar(np.log10(10.3e10), 220/35.7, marker='o', color='k', ls='None', label='M31') # Collins et al. (2010)
+        plt.axvspan(9,10.5, color='r', alpha=0.3)
+
     # Add title and labels
     if param=='mass':
         plt.xlabel(r'$\log M_{\star}$ (M$_{\odot}$)', fontsize=20)
-        xlim = [3.25,9.7]
+        xlim = [3.25,11.5]
         plt.xlim(xlim)
-        plt.ylim([-0.05,4.])
+        plt.ylim([-1,10.])
         plt.plot(xlim,[1,1],':k')
         if plotline:
-            plt.plot(xlim, poly_med[0]*np.array(xlim) + poly_med[1], 'r-', label=r"Best-fit line (excluding LG ultra-faints: $y=${:.2f}$x-${:.2f})".format(poly_med[0], np.abs(poly_med[1])))
+            plt.plot(xlim, poly_med[0]*np.array(xlim) + poly_med[1], 'r-', label=r"Best-fit line (excluding LG ultra-faints") #: $y=${:.2f}$x-${:.2f})".format(poly_med[0], np.abs(poly_med[1])))
     if param=='dLstar':
         if onsky:
             plt.xlabel(r'$d_{L_{\star}}$, projected (kpc)', fontsize=20)
@@ -183,7 +201,7 @@ def vsigma_plot(param='mass', plot_path='plots/', mass='sdss', inclination=False
         xlim = [10,1.5e4]
         plt.xlim(xlim)
         plt.ylim([-0.05,4.])
-        plt.plot([0,2e4],[1,1],':k')
+        plt.plot([0,2e4],[0,0],'-k')
         if plotline:
             plt.plot(xlim, poly_med[0]*np.array(xlim) + poly_med[1], 'r-', label=r"Best-fit line (excluding LG ultra-faints: $y=${:.2f}$x-${:.2f})".format(poly_med[0], np.abs(poly_med[1])))
     if param=='ellipticity':
@@ -213,8 +231,8 @@ def vsigma_plot(param='mass', plot_path='plots/', mass='sdss', inclination=False
     if onsky:
         param = param+'_onsky'
 
-    plt.savefig((plot_path+'vsigma_'+param+'.pdf'), bbox_inches='tight')
-    #plt.show()
+    plt.savefig((plot_path+'vsigma_'+param+'_withkeck.pdf'), bbox_inches='tight')
+    plt.show()
 
     return
 
@@ -299,6 +317,10 @@ def dLstar_mass(plot_path='plots/', mass='sdss'):
             mass (str): Either SDSS ('sdss') or WISE ('wise') stellar masses 
 	"""
 
+    # Data from Keck2024A proposal
+    mass_keck2024a = np.array([8.02931976,8.13880634,8.24504566,8.27385139,8.70394897,8.721735,8.92823124,8.9456224,9.52635288,9.86613941])
+    dLstar_keck2024a = np.array([2075,1067,1289,4612,2436,3938,2208,491,2523,1401])
+
     # Read in cluster dE data from Geha+03
     geha03 = np.genfromtxt('../data/geha03_tab1.txt', delimiter='\t', names=True)
     vsigma_virgo = geha03['vrot']/geha03['sigma']
@@ -320,9 +342,9 @@ def dLstar_mass(plot_path='plots/', mass='sdss'):
     # Read in data from void dwarfs
     voiddata = ascii.read('../data/sample_FINAL_new.csv').filled(-999.0)
     
-    vsigma_void = voiddata['vsigma']
-    vsigma_void_uperr = voiddata['vsigma_uperr']
-    vsigma_void_loerr = voiddata['vsigma_loerr']
+    vsigma_void = voiddata['vsigma_mc']
+    vsigma_void_uperr = voiddata['vsigma_mc_err_up']
+    vsigma_void_loerr = voiddata['vsigma_mc_err_lo']
 
     if mass != 'wise':
         mass_void = voiddata['massSDSS']
@@ -335,7 +357,7 @@ def dLstar_mass(plot_path='plots/', mass='sdss'):
     dLstar_void[dLstar_void<-990] = 3000
 
     # Make masks for void data
-    good_idx = [True if ~np.any(np.isclose([dLstar_void[i], mass_void[i], voiddata['vmax'][i], voiddata['sigma'][i]], -999)) else False for i in range(len(mass_void))]
+    good_idx = [True if ~np.any(np.isclose([dLstar_void[i], mass_void[i], voiddata['vmax_mc'][i], voiddata['sigma'][i]], -999)) else False for i in range(len(mass_void))]
 
     # Make figure
     fig = plt.figure(figsize=(8,6))
@@ -348,8 +370,10 @@ def dLstar_mass(plot_path='plots/', mass='sdss'):
     # Plot my data
     plt.scatter(dLstar_void[good_idx], mass_void[good_idx], label='Field', c=vsigma_void[good_idx], cmap=cmr.bubblegum, vmin=0, vmax=vmax, marker='o', s=40, alpha=0.8)
 
+    plt.scatter(dLstar_keck2024a, mass_keck2024a, label='This proposal', c='None', edgecolor='r', marker='*', s=100)
+
     # Plot cluster data
-    plt.scatter(dLstar_virgo, mass_virgo, label='Cluster', c=vsigma_virgo, cmap=cmr.bubblegum, vmin=0, vmax=vmax, marker='^', s=40, alpha=0.8)
+    #plt.scatter(dLstar_virgo, mass_virgo, label='Cluster', c=vsigma_virgo, cmap=cmr.bubblegum, vmin=0, vmax=vmax, marker='^', s=40, alpha=0.8)
     
     #ax.errorbar(dLstar_void[good_idx], mass_void[good_idx], yerr=mass_void_err[:,good_idx], label='Field', 
     #           color=vsigma_void[good_idx], cmap=cmr.bubblegum, linestyle='None', marker='o', markersize=8, linewidth=1)
@@ -358,10 +382,10 @@ def dLstar_mass(plot_path='plots/', mass='sdss'):
     cbar = plt.colorbar(sc)
     cbar.set_label(r'$v_{\mathrm{rot}}/\sigma_{\star}$', fontsize=20)
     plt.ylabel(r'$\log M_{\star}$ (M$_{\odot}$)', fontsize=20)
-    plt.ylim([3.25,9.7])
+    #plt.ylim([3.25,10.2])
     plt.xlabel(r'$d_{L_{\star}}$ (kpc)', fontsize=20)
     plt.xscale('log')
-    plt.xlim([0.5,255000])
+    plt.xlim([10,50000])
     plt.legend(loc='best', fontsize=14)
     #plt.ylabel(r'$v_{\mathrm{rot}}/\sigma_{\star}$', fontsize=20)
     plt.yticks(fontsize=14)
@@ -545,7 +569,7 @@ def compare_nslits(plot_path='plots/', param='sigma'):
 if __name__ == "__main__":
 
     #vsigma_plot(param='dLstar', inclination=False, plotline=False, onsky=True)
-    vsigma_plot(param='mass', mass='wise', inclination=False, plotline=True)
+    vsigma_plot(param='mass', mass='wise', inclination=False, plotline=False)
     #vsigma_plot(param='redshift', inclination=False, plotline=False)
     #vsigma_plot(param='ellipticity', inclination=False)
     #mass_metallicity()

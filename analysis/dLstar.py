@@ -80,9 +80,10 @@ def computeBellmass(g,r,z):
     return logMstar
 
 if __name__=="__main__":
-    coord = '02 26 28.29	+01 09 37.92'
-    c1 = coords_to_deg(coord)
-    z1 = 0.00513761
+    #coord = '12h13m13.71s +13d31m22.17s'
+    #c1 = coords_to_deg(coord)
+    c1 = [125.644,50.4409]
+    z1 = 0.024255
 
     sqlfile = ascii.read('sql.csv')
     dist2d = np.zeros(len(sqlfile['specObjID']))

@@ -70,7 +70,7 @@ class Cube:
 
 	"""
 
-	def __init__(self, filename, folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/data/', verbose=False, wcscorr=None, z=0., sn_wvl=[4750.,4800.], wvlrange=[3700., 5100.], EBV=0.):
+	def __init__(self, filename, folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/data/', verbose=False, wcscorr=None, z=0., sn_wvl=[4750.,4800.], wvlrange=[3700., 5100.], EBV=0., whitelight=False):
 
 		"""Opens datacube and sets base attributes.
 
@@ -84,6 +84,7 @@ class Cube:
 				sn_wvl (float list): lower and upper wavelength bounds across which to compute S/N
 				wvlrange (float list): lower and upper wavelength bounds to keep
 				EBV (float): E(B-V) value from Schlafly & Finkbeiner (2011), used to correct for Galactic reddening
+				whitelight (bool): If 'True', save white-light images
 		"""
 
 		# Define galaxy name
@@ -184,6 +185,21 @@ class Cube:
 			testerror = np.sqrt(self.var[:,idx,idy])
 			plt.fill_between(self.wvl_zcorr,self.data[:,idx,idy]-testerror,self.data[:,idx,idy]+testerror,facecolor='C0',alpha=0.5,edgecolor='None')
 			plt.show()
+
+		if whitelight:
+			print('making white light images')
+			# Make integrated white-light images
+			wldata = np.ma.sum(self.data, axis=0).filled(fill_value=np.nan)
+			wlvar = np.ma.sum(self.var, axis=0).filled(fill_value=np.nan)
+			wlmask = np.zeros_like(wldata)
+			badidx = np.where(np.all(self.mask, axis=0))
+			wlmask[badidx] = 1
+
+			print('saving white light images')
+			# Save images
+			fits.writeto(folder+'whitelight/'+self.galaxyname+'_int.fits', wldata, self.header, overwrite=True)
+			fits.writeto(folder+'whitelight/'+self.galaxyname+'_var.fits', wlvar, self.header, overwrite=True)
+			fits.writeto(folder+'whitelight/'+self.galaxyname+'_msk.fits', wlmask, self.header, overwrite=True)
 
 	def binspaxels(self, params=[1., 1., 60.], verbose=False, targetsn=10., emline=None):
 		""" Bin spaxels spatially to increase S/N
@@ -719,6 +735,8 @@ class Cube:
 
 			# Prep array for output
 			self.data_norm = np.zeros(np.shape(self.data_cropped))
+			self.errors_norm = np.zeros(np.shape(self.data_cropped))
+			self.kinematics_wvl = np.zeros(np.shape(self.data_cropped))
 
 			# Loop over all bins
 			for binID in range(len(self.bins)):
@@ -742,9 +760,13 @@ class Cube:
 
 					# Subtract kinematics fit
 					self.data_norm[:,yarray[i],xarray[i]] = galaxy - self.kinematics_fit_bin[binID]*np.median(galaxy)
+					self.errors_norm[:,yarray[i],xarray[i]] = self.stacked_errs[binID]
+					self.kinematics_wvl[:,yarray[i],xarray[i]] = self.kinematics_wvl_bin[binID]
 
 			# Save file
 			np.save('output/'+self.galaxyname+'/data_norm', self.data_norm)
+			np.save('output/'+self.galaxyname+'/var_norm', self.errors_norm)
+			np.save('output/'+self.galaxyname+'/kinwvl', self.kinematics_wvl)
 
 			print('Normalizing data by best-fit stellar template for each bin...')
 
@@ -779,6 +801,8 @@ class Cube:
 				plt.ylabel('Flux', fontsize=16)
 				plt.xlim(3500,5100)
 
+				plt.show()
+
 				# Plot another example spectrum
 				# Get all IDs in that bin
 				idx = np.where(self.binNum==self.bins[0])[0][0]
@@ -789,15 +813,14 @@ class Cube:
 
 				plt.figure(figsize=(12,5))
 				plt.title('single spaxel')
-				plt.plot(self.kinematics_wvl_bin[0], self.data_norm[:,yarray, xarray])
+				plt.plot(self.kinematics_wvl[:,yarray,xarray], self.data_norm[:,yarray, xarray])
+				noise = np.sqrt(self.errors_norm[:,yarray,xarray])
+				plt.fill_between(self.kinematics_wvl[:,yarray,xarray], self.data_norm[:,yarray, xarray] - noise, self.data_norm[:,yarray, xarray] + noise, alpha=0.5, color='gray')
 				plt.xlabel(r'$\lambda (\AA)$', fontsize=16)
 				plt.ylabel('Flux', fontsize=16)
 				plt.xlim(3500,5100)
 
-				# Plot error
-				#plt.show()
-
-				#plt.show()
+				plt.show()
 
 		return
 
@@ -1089,7 +1112,7 @@ class Cube:
 			# Loop over all spaxels
 			for i in range(len(datanorm[0,:,0])):
 				for j in range(len(datanorm[0,0,:])):
-					if velmask[i,j] and snrtest[i,j]:
+					if snrtest[i,j]:
 
 						# Crop flux, wvl arrays to only contain the area around the line
 						idx = np.where((wvlnorm[:,i,j] > (line-xlim)) & (wvlnorm[:,i,j] < (line+xlim)))[0]
@@ -1109,12 +1132,14 @@ class Cube:
 							snr[i,j] = signal/noise
 
 			fig, ax = plt.subplots()
-			im = ax.imshow(snr, cmap='viridis', interpolation='nearest')
+			im = ax.imshow(lineflux, cmap='viridis', interpolation='nearest')
 			fig.colorbar(im, ax=ax)
-			#plt.show()
+			plt.show()
 
 		else:
 			# Loop over all bins
+			image = np.empty(np.shape(self.data[0,:,:]))
+			image[:] = np.nan
 			for binID in range(len(self.bins)):
 
 				# Crop flux, wvl arrays to only contain the area around the line
@@ -1133,6 +1158,23 @@ class Cube:
 
 				if signal/noise > 0.:
 					snr[binID] = signal/noise
+
+				# Now save binned data in a format that can be plotted as an image
+				idx = np.where(self.binNum==self.bins[binID])[0]
+
+				# Get image coords of all the pixels in a bin
+				xarray = np.asarray(self.x[idx])
+				yarray = np.asarray(self.y[idx])
+
+				# Loop over all pixels in the bin and append the flux to each pixel
+				for i in range(len(xarray)):
+					if self.velmask[binID]:
+						image[yarray[i],xarray[i]] = lineflux[binID]
+
+			fig, ax = plt.subplots()
+			im = ax.imshow(image, cmap='viridis', interpolation='nearest')
+			fig.colorbar(im, ax=ax)
+			plt.show()
 
 		# Save data
 		np.savetxt(flux_file, lineflux)
@@ -1380,7 +1422,7 @@ def runredux(galaxyname, folder='/raid/madlr/voids/analysis/stackedcubes/', make
 	param = params[galaxyname]
 
 	# Open cube
-	c = Cube(galaxyname, folder=folder, verbose=param['verbose'], wcscorr=param['wcscorr'], z=param['z'], EBV=param['EBV'])
+	c = Cube(galaxyname, folder=folder, verbose=param['verbose'], wcscorr=param['wcscorr'], z=param['z'], EBV=param['EBV'], whitelight=True)
 
 	if (not makeplots) and (param['plotcovar']):
 		# Get covariance estimate
@@ -1395,12 +1437,29 @@ def runredux(galaxyname, folder='/raid/madlr/voids/analysis/stackedcubes/', make
 
 	if not makeplots:
 		# Do continuum fitting to get stellar kinematics
-		c.stellarkinematics(overwrite=True, plottest=True, removekinematics=False, snr_mask=param['snr_mask'], verbose=param['verbose'], vsigma=True)
+		c.stellarkinematics(overwrite=True, plottest=False, removekinematics=True, snr_mask=param['snr_mask'], verbose=True, vsigma=True)
 	else:
 		c.stellarkinematics(overwrite=False, plottest=True, removekinematics=False, snr_mask=param['snr_mask'], verbose=param['verbose'], vsigma=True, plotveldist=True)
 
+	# Individual spaxels
+	errors = np.sqrt(c.var[c.goodwvl, :, :])
+	data_norm = c.data_norm
+	kinematics_wvl = c.kinematics_wvl
+
+	# Mask data
+	data_norm = np.ma.array(data_norm, mask=c.mask_cropped)
+	kinematics_wvl = np.ma.array(kinematics_wvl, mask=c.mask_cropped)
+	errors = np.ma.array(errors, mask=c.mask_cropped)
+	#c.make_emline_map(data_norm, kinematics_wvl, errors, 'Hbeta', overwrite=True, binned=False)
+
+	# Bins
+	#errors = c.stacked_errs
+	#data_norm = c.data_norm_bin
+	#kinematics_wvl = c.kinematics_wvl_bin
+	#c.make_emline_map(data_norm, kinematics_wvl, errors, 'Hbeta', overwrite=True, binned=True)
+
 	# Make kinematics plots
-	c.plotkinematics(vellimit=param['vellimit'], veldisplimit=param['veldisplimit'], ploterrs=False)
+	#c.plotkinematics(vellimit=param['vellimit'], veldisplimit=param['veldisplimit'], ploterrs=False)
 
 	# TODO: Re-bin, this time using emission line S/N
 	#c.binspaxels(verbose=False, targetsn=10, params=covparams, emline='Hbeta')
@@ -1423,7 +1482,7 @@ def runallgalaxies():
 	# Run reduction pipeline for each galaxy
 	for galaxy in galaxylist:
 		try:
-			runredux(galaxy, folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/redux/stackedcubes/', makeplots=True)
+			runredux(galaxy, folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/redux/stackedcubes/', makeplots=False)
 		except:
 			print('Failed on '+galaxy)
 
@@ -1431,9 +1490,9 @@ def runallgalaxies():
 
 def main():
 
-	#runallgalaxies()
+	runallgalaxies()
 
-	runredux('1782069', folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/redux/stackedcubes/', makeplots=True)
+	#runredux('reines65', folder='/Users/miadelosreyes/Documents/Research/VoidDwarfs/redux/stackedcubes/', makeplots=False)
 
 	return
 

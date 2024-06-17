@@ -134,7 +134,7 @@ params = \
     },
 '1782069': 
     {
-        'verbose': True,
+        'verbose': False,
         'wcscorr': [0.,0.],
         'z': 0.0145,
         'EBV': 0.0523, 
