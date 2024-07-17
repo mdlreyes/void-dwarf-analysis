@@ -480,17 +480,18 @@ params = \
         'snr_mask': snr_mask,
         'instdisp': False,
         'vellimit': 15,
-        'veldisplimit': [0, 50]
+        'veldisplimit': [0, 50],
+        'mapsize': 800  #parsecs
     },
-'RTnsCRiMHD_highres': 
+'RTnsCRiMHD_KCWI_highres': 
     {
         'verbose': False,
         'z': 0.,
-        'targetsn': 40,
+        'targetsn': 50,
         'snr_mask': snr_mask,
         'instdisp': False,
-        'vellimit': 20,
-        'veldisplimit': [10, 35]
+        'vellimit': 15,
+        'veldisplimit': [0, 60]
     },
 'HD-Boost_KCWI': 
     {
@@ -541,5 +542,113 @@ params = \
         'instdisp': False,
         'vellimit': 15,
         'veldisplimit': [0, 60]
+    },
+'HD_KCWI_R18000': 
+    {
+        'verbose': False,
+        'z': 0.,
+        'targetsn': 60,
+        'snr_mask': snr_mask,
+        'instdisp': False,
+        'vellimit': 15,
+        'veldisplimit': [20, 35]
+    },
+'RTnsCRiMHD_KCWI_R18000': 
+    {
+        'verbose': False,
+        'z': 0.,
+        'targetsn': 60,
+        'snr_mask': snr_mask,
+        'instdisp': False,
+        'vellimit': 10,
+        'veldisplimit': [20, 30]
+    },
+'NoFb_KCWI_R18000': 
+    {
+        'verbose': False,
+        'z': 0.,
+        'targetsn': 60,
+        'snr_mask': snr_mask,
+        'instdisp': False,
+        'vellimit': 30,
+        'veldisplimit': [25, 30]
+    },
+'UFDHD_BH1': 
+    {
+        'verbose': True,
+        'z': 0.,
+        'targetsn': 150,
+        'snr_mask': snr_mask,
+        'instdisp': False,
+        'vellimit': 15,
+        'veldisplimit': [0, 50],
+        'mapsize': 500,  #parsecs
+        'wvlrange': [3500., 4100.],
+        'sn_wvl': [3500., 3700.]
+    },
+'UFDHD_BH3': 
+    {
+        'verbose': True,
+        'z': 0.,
+        'targetsn': 50,
+        'snr_mask': snr_mask,
+        'instdisp': False,
+        'vellimit': 15,
+        'veldisplimit': [0, 50],
+        'mapsize': 500,  #parsecs
+        'wvlrange': [4700., 5600.],
+        'sn_wvl': [4700., 4800.]
+    },
+'UFDHD_RH1': 
+    {
+        'verbose': True,
+        'z': 0.,
+        'targetsn': 50,
+        'snr_mask': snr_mask,
+        'instdisp': False,
+        'vellimit': 15,
+        'veldisplimit': [0, 50],
+        'mapsize': 500,  #parsecs
+        'wvlrange': [5500., 6800.],
+        'sn_wvl': [5750., 5800.]
+    },
+'UFDHD_RH3': 
+    {
+        'verbose': True,
+        'z': 0.,
+        'targetsn': 50,
+        'snr_mask': snr_mask,
+        'instdisp': False,
+        'vellimit': 15,
+        'veldisplimit': [0, 50],
+        'mapsize': 500,  #parsecs
+        'wvlrange': [7700., 9500.],
+        'sn_wvl': [7900., 8000.]
+    },
+'UFDHD_HRR': 
+    {
+        'verbose': True,
+        'z': 0.,
+        'targetsn': 50,
+        'snr_mask': snr_mask,
+        'instdisp': False,
+        'vellimit': 15,
+        'veldisplimit': [0, 50],
+        'mapsize': 500,  #parsecs
+        'wvlrange': [6405.61, 6797.14],
+        'sn_wvl': [6405.61, 6450.]
+    },
+'UFDHD_HRI': 
+    {
+        'verbose': True,
+        'z': 0.,
+        'targetsn': 50,
+        'snr_mask': snr_mask,
+        'instdisp': False,
+        'vellimit': 15,
+        'veldisplimit': [0, 50],
+        'mapsize': 500,  #parsecs
+        'wvlrange': [8380.20, 8882.38],
+        'sn_wvl': [8380.20, 8430.]
     }
 }
