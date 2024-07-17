@@ -20,6 +20,7 @@ from astropy.io import fits
 from astropy.wcs import WCS
 import os
 from params import params
+from sim_params import sim_params
 import cmasher as cmr
 
 # Astropy packages for plotting
@@ -49,7 +50,6 @@ from utils.k_lambda import k_lambda
 from tqdm import tqdm
 
 # Packages from simulation_projector to read IFU data
-from input_output_functions import read_grafic2npcube
 from IFU_cube_functions import *
 
 # Wavelength dictionary for standard lines (from NIST when possible)
@@ -74,7 +74,7 @@ class Cube:
 
 	"""
 
-	def __init__(self, filename, folder='/home/aqueen/sim_kinematics/mock_data/', verbose=False, wcscorr=None, z=0., sn_wvl=[4750.,4800.], wvlrange=[3700., 5100.], EBV=0.):
+	def __init__(self, filename, folder='/home/aqueen/sim_kinematics/mock_data/', verbose=False, fluxmask=False, simname="RTnsCRiMHD", mapsize=0.8, wcscorr=None, z=0., sn_wvl=[4750.,4800.], wvlrange=[3700., 5100.], EBV=0.):
 
 		"""Opens datacube and sets base attributes.
 
@@ -92,7 +92,10 @@ class Cube:
 
 		# Define galaxy name
 		self.folder = folder
-		self.galaxyname = filename
+		if fluxmask:
+			self.galaxyname = filename+"_masked"
+		else:
+			self.galaxyname = filename
 
 		print('Initializing cube '+self.galaxyname+'...')
 
@@ -114,10 +117,19 @@ class Cube:
 		#var = np.full(data.shape, 1e-30)
 
 		# Mask the data and variance cubes
-		self.mask = data <= 0
+		if fluxmask:
+			shape = data.shape
+			displacement = np.linspace(-mapsize/2, mapsize/2, num=shape[-1])
+			_, x, y = np.meshgrid(range(shape[0]), displacement, displacement, indexing='ij')
+			mask1 = np.sqrt(x**2 + y**2) > sim_params[simname]['radius']
+			mask2 = data <= 0
+			self.mask = np.logical_or(mask1, mask2)
+		else:
+			self.mask = data <= 0
 		self.data = np.ma.array(data, mask=self.mask)
 		self.var = np.ma.array(var, mask=self.mask)
-
+		self.wvlrange = wvlrange
+	
 		# Make wavelength array
 		self.wavelength_data = read_IFU_wavelength(folder+filename+'_info.txt')
 		wvl0 = self.wavelength_data['lmin (A)'] # wvl zeropoint
@@ -154,7 +166,7 @@ class Cube:
 
 			plt.xlabel(r'$\lambda (\AA)$', fontsize=16)
 			plt.ylabel('Flux', fontsize=16)
-			plt.xlim(3700,5100)
+			plt.xlim(self.wvlrange)
 
 			# Plot error
 			testerror = np.sqrt(self.var[:,idx,idy])
@@ -414,6 +426,7 @@ class Cube:
 		# Prep the observed spectrum
 		galspec = ndimage.gaussian_filter1d(spectrum, self.sigma)
 		galaxy, logLam1, velscale = util.log_rebin(self.lamRange1, galspec)
+		noise = noise/(np.median(galaxy)**2)
 		galaxy = galaxy/np.median(galaxy)
 
 		# Shift the template to fit the starting wavelength of the galaxy spectrum
@@ -510,7 +523,7 @@ class Cube:
 						plt.ylabel(r'Normalized flux', fontsize=14)
 						plt.text(3750, 1.35, 'Central bin: S/N={:.1f}'.format(self.sn[binID]), fontsize=15)
 						plt.ylim(0.5,1.5)
-						plt.xlim(3700,5100)
+						plt.xlim(self.wvlrange)
 						plt.savefig('figures/'+self.galaxyname+'/'+'centerspec.pdf', bbox_inches='tight') 
 						#plt.show()
 
@@ -527,7 +540,7 @@ class Cube:
 						plt.ylabel(r'Normalized flux', fontsize=14)
 						plt.text(3750, 1.35, 'Outer bin: S/N={:.1f}'.format(self.sn[binID]), fontsize=15)
 						plt.ylim(0.5,1.5)
-						plt.xlim(3700,5100)
+						plt.xlim(self.wvlrange)
 						plt.savefig('figures/'+self.galaxyname+'/'+'outerspec.pdf', bbox_inches='tight') 
 						#plt.show()
 
@@ -586,9 +599,9 @@ class Cube:
 			
 			# Compute vmax
 			if self.galaxyname=='2502521':
-				goodidx = np.where((self.vel_err > 0.) & (self.veldisp_err > 0) & (self.vel_err < 350.) & (self.velmask==True) & (self.vel_err < np.max(np.abs(self.vel))))
+				goodidx = np.where((self.vel_err > 0.) & (self.veldisp_err > 0) & (self.vel_err < 350.) & (self.velmask==True)) #& (self.vel_err < np.max(np.abs(self.vel))))
 			else:
-				goodidx = np.where((self.vel_err > 0.) & (self.veldisp_err > 0) & (self.velmask==1) & (self.vel_err < np.max(np.abs(self.vel))))
+				goodidx = np.where((self.vel_err > 0.) & (self.veldisp_err > 0) & (self.velmask==1)) #& (self.vel_err < np.max(np.abs(self.vel))))
 			
 			Niter = 10000
 			vmaxes = np.zeros(Niter)
@@ -795,7 +808,7 @@ class Cube:
 			unpacked_array = np.zeros_like(self.data[0,:,:])
 
 			# Loop over all bins
-			for binID in range(len(self.bins)-1): #-1 (have to add for 955106)
+			for binID in range(len(self.bins)): #-1 (have to add for 955106)
 
 				# Get all IDs in that bin
 				idx = np.where(self.binNum==self.bins[binID])[0]
@@ -833,8 +846,8 @@ class Cube:
 				mask = np.array(unpack_binneddata(mask), dtype=bool)
 				copy[~mask] = np.nan
 
-				mask = np.array(unpack_binneddata(self.vel_err) > np.max(np.abs(self.vel)))
-				copy[mask] = np.nan
+				#mask = np.array(unpack_binneddata(self.vel_err) > np.max(np.abs(self.vel)))
+				#copy[mask] = np.nan
 
 			# Mask bad measurements of sigma
 			if plotname=='veldisp':
@@ -845,9 +858,9 @@ class Cube:
 				copy[mask] = np.nan
 
 			# Remove bad bin from 2502521
-			if self.galaxyname=='2502521':
-				mask = np.array(unpack_binneddata(self.vel_err) > 350.)
-				copy[mask] = np.nan
+			#if self.galaxyname=='2502521':
+				#mask = np.array(unpack_binneddata(self.vel_err) > 350.)
+				#copy[mask] = np.nan
 
 			if showplot:
 				fig = plt.figure(figsize=(5,5))
@@ -1327,7 +1340,7 @@ class Cube:
 
 		return
 
-def runredux(galaxyname, folder='/raid/madlr/voids/analysis/stackedcubes/', makeplots=False):
+def runredux(galaxyname, folder='/raid/madlr/voids/analysis/stackedcubes/', makeplots=False, fluxmask=False, simname="RTnsCRiMHD"):
 	""" Run full redux pipeline.
 
 	Arguments:
@@ -1343,7 +1356,7 @@ def runredux(galaxyname, folder='/raid/madlr/voids/analysis/stackedcubes/', make
 	param = params[galaxyname]
 
 	# Open cube
-	c = Cube(galaxyname, folder=folder, verbose=param['verbose'], z=param['z'])
+	c = Cube(galaxyname, folder=folder, verbose=param['verbose'], z=param['z'], fluxmask=fluxmask, simname=simname, mapsize=param['mapsize'], wvlrange=param['wvlrange'], sn_wvl=param['sn_wvl'])
 
 	# Bin spaxels by continuum S/N, accounting for covariance
 	c.binspaxels(targetsn=param['targetsn'], emline=None, verbose=param['verbose'])
@@ -1371,17 +1384,15 @@ def runredux(galaxyname, folder='/raid/madlr/voids/analysis/stackedcubes/', make
 
 def runallgalaxies():
 	# List of all galaxies
-	galaxylist = ['reines65','1180506','281238','1142116','1876887','1904061','2502521','821857',
-			'1126100','1158932','1782069','1785212','866934','825059','1063413','1074435',
-			'1228631','1246626','955106','1280160','control757','control801','control872',
-			'control842','PiscesA','PiscesB','control751','control775','control658']
+	galaxylist = ['HD_KCWI','HD-Boost_KCWI','iMHD_KCWI','CRiMHD_KCWI','NoFb_KCWI','RT_KCWI','RTiMHD_KCWI','RTnsCRiMHD_KCWI']
+	simlist = ['HD', 'HD_Boost', 'iMHD', 'CRiMHD', 'NoFb', 'RT', 'RTiMHD', 'RTnsCRiMHD']
 
 	# Run reduction pipeline for each galaxy
-	for galaxy in galaxylist:
+	for i in range(len(galaxylist)):
 		try:
-			runredux(galaxy, folder='/home/aqueen/void-dwarf-analysis/redux/stackedcubes/', makeplots=False)
+			runredux(galaxylist[i], folder='/home/aqueen/sim_kinematics/mock_data/', makeplots=True, fluxmask=True, simname=simlist[i])
 		except:
-			print('Failed on '+galaxy)
+			print('Failed on '+galaxylist[i])
 
 	return
 
@@ -1389,7 +1400,7 @@ def main():
 
 	#runallgalaxies()
 
-	runredux('CRiMHD_KCWI', folder='/home/aqueen/sim_kinematics/mock_data/', makeplots=True)
+	runredux('UFDHD_BH1', folder='/home/aqueen/sim_kinematics/MockIFU/', makeplots=True, fluxmask=False, simname="HD")
 	
 
 	return
